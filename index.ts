@@ -8,7 +8,6 @@ import router from "./routes";
 // ─── Startup Validation ───────────────────────────────────────────────────────
 
 const REQUIRED_ENV = [
-  "BACKEND_PORT",
   "FRONTEND_URL",
   "DATABASE_URL",
   "JWT_ACCESS_SECRET",
@@ -30,6 +29,8 @@ for (const key of REQUIRED_ENV) {
     process.exit(1);
   }
 }
+
+const port = Number(process.env.PORT || process.env.BACKEND_PORT || 3001);
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 
@@ -92,6 +93,6 @@ app.use(
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 
-app.listen(Number(process.env.BACKEND_PORT), () => {
-  console.log(`[Server] Running on port ${process.env.BACKEND_PORT}`);
+app.listen(port, () => {
+  console.log(`[Server] Running on port ${port}`);
 });
