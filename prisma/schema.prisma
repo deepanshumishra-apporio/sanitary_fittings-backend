@@ -1,0 +1,251 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+
+enum Role {
+  CUSTOMER
+  ADMIN
+  SUBADMIN
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CREDIT_CARD
+  DEBIT_CARD
+  UPI
+  NET_BANKING
+  COD
+  WALLET
+}
+
+model User {
+  id            String         @id @default(uuid())
+  email         String?        @unique
+  phone         String?        @unique
+  name          String?
+  password      String?
+  role          Role           @default(CUSTOMER)
+  emailVerified Boolean        @default(false)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  addresses     Address[]
+  cart          Cart[]
+  orders        Order[]
+  wishlist      Wishlist[]
+  payments      Payment[]
+  reviews       Review[]
+  refreshTokens RefreshToken[]
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  jti       String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Category {
+  id          String     @id @default(uuid())
+  name        String     @unique
+  description String?
+  parentId    String?
+  parent      Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryTree")
+  products    Product[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model Vendor {
+  id          String          @id @default(uuid())
+  name        String
+  email       String          @unique
+  phone       String?
+  address     String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  products    ProductVendor[]
+}
+
+model ProductVendor {
+  id        String   @id @default(uuid())
+  productId String
+  vendorId  String
+  price     Float
+  stock     Int
+  sku       String?
+  isActive  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  vendor    Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, vendorId])
+}
+
+model Product {
+  id          String          @id @default(uuid())
+  name        String
+  description String?
+  price       Float
+  discount    Float           @default(0)
+  stock       Int
+  images      String[]
+  videos      String[]
+  categoryId  String
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  category    Category        @relation(fields: [categoryId], references: [id])
+  orderItems  OrderItem[]
+  cartItems   Cart[]
+  wishlist    Wishlist[]
+  reviews     Review[]
+  vendors     ProductVendor[]
+}
+
+model Order {
+  id         String      @id @default(uuid())
+  userId     String
+  addressId  String?
+  totalPrice Float
+  discount   Float       @default(0)
+  status     OrderStatus @default(PENDING)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  user       User        @relation(fields: [userId], references: [id])
+  address    Address?    @relation(fields: [addressId], references: [id])
+  items      OrderItem[]
+  payment    Payment?
+}
+
+model OrderItem {
+  id        String  @id @default(uuid())
+  orderId   String
+  productId String
+  quantity  Int
+  price     Float
+  discount  Float   @default(0)
+
+  order     Order   @relation(fields: [orderId], references: [id])
+  product   Product @relation(fields: [productId], references: [id])
+}
+
+model Cart {
+  id        String   @id @default(uuid())
+  userId    String
+  productId String
+  quantity  Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id])
+  product   Product  @relation(fields: [productId], references: [id])
+
+  @@unique([userId, productId])
+}
+
+model Wishlist {
+  id        String   @id @default(uuid())
+  userId    String
+  productId String
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id])
+  product   Product  @relation(fields: [productId], references: [id])
+
+  @@unique([userId, productId])
+}
+
+model Address {
+  id        String   @id @default(uuid())
+  userId    String
+  name      String
+  phone     String?
+  line1     String
+  line2     String?
+  city      String
+  state     String
+  zip       String
+  country   String
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id])
+  orders    Order[]
+}
+
+model Payment {
+  id               String        @id @default(uuid())
+  userId           String
+  orderId          String        @unique
+  amount           Float
+  status           PaymentStatus @default(PENDING)
+  method           PaymentMethod?
+  razorpayOrderId  String?       @unique
+  transactionId    String?       @unique
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  user             User          @relation(fields: [userId], references: [id])
+  order            Order         @relation(fields: [orderId], references: [id])
+}
+
+model Review {
+  id        String   @id @default(uuid())
+  userId    String
+  productId String
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id])
+  product   Product  @relation(fields: [productId], references: [id])
+
+  @@unique([userId, productId])
+}
+
+model OtpCode {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  codeHash  String
+  expiresAt DateTime
+  attempts  Int      @default(0)
+  createdAt DateTime @default(now())
+}

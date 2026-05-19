@@ -1,0 +1,103 @@
+import "dotenv/config";
+import express from "express";
+import cors from "cors";
+import helmet from "helmet";
+import cookieParser from "cookie-parser";
+import { clerkMiddleware } from "@clerk/express";
+import router from "./routes";
+
+// ─── Startup Validation ───────────────────────────────────────────────────────
+
+const REQUIRED_ENV = [
+  "BACKEND_PORT",
+  "FRONTEND_URL",
+  "CLERK_SECRET_KEY",
+  "CLERK_WEBHOOK_SECRET",
+  "DATABASE_URL",
+  "JWT_ACCESS_SECRET",
+  "JWT_REFRESH_SECRET",
+  "JWT_INTERNAL_SECRET",
+  "RAZORPAY_KEY_ID",
+  "RAZORPAY_KEY_SECRET",
+  "RAZORPAY_WEBHOOK_SECRET",
+  "R2_ACCOUNT_ID",
+  "R2_ACCESS_KEY_ID",
+  "R2_SECRET_ACCESS_KEY",
+  "R2_BUCKET_NAME",
+  "R2_PUBLIC_URL",
+];
+
+for (const key of REQUIRED_ENV) {
+  if (!process.env[key]) {
+    console.error(`[Startup] Missing required environment variable: ${key}`);
+    process.exit(1);
+  }
+}
+
+// ─── App ──────────────────────────────────────────────────────────────────────
+
+const app = express();
+
+app.use(helmet());
+
+app.use(
+  cors({
+    origin: process.env.FRONTEND_URL,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true,
+  })
+);
+
+// Webhooks need raw body so Svix can verify the HMAC signature — mount before express.json
+app.use("/api/v1/webhooks", express.raw({ type: "application/json", limit: "1mb" }));
+
+// Everything else gets JSON
+app.use(express.json({ limit: "10kb" }));
+
+app.use(cookieParser());
+
+// Clerk middleware — enables getAuth() helpers used by webhook handlers
+app.use(clerkMiddleware());
+
+app.use("/api/v1", (req, res, next) => {
+  const privatePrefixes = [
+    "/auth",
+    "/order",
+    "/cart",
+    "/wishlist",
+    "/checkout",
+    "/address",
+    "/payment",
+  ];
+
+  if (privatePrefixes.some((prefix) => req.path.startsWith(prefix))) {
+    res.setHeader("Cache-Control", "no-store, private");
+    res.setHeader("Pragma", "no-cache");
+  }
+
+  next();
+});
+
+// ─── Routes ───────────────────────────────────────────────────────────────────
+
+app.get("/health", (_req, res) => {
+  res.status(200).json({ status: "ok" });
+});
+
+app.use("/api/v1", router);
+
+// ─── Global Error Handler ─────────────────────────────────────────────────────
+
+app.use(
+  (err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    console.error("[UnhandledError]", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+);
+
+// ─── Start ────────────────────────────────────────────────────────────────────
+
+app.listen(Number(process.env.BACKEND_PORT), () => {
+  console.log(`[Server] Running on port ${process.env.BACKEND_PORT}`);
+});
