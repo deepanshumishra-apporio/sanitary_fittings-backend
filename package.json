@@ -11,11 +11,6 @@
     "@types/multer": "^2.1.0",
     "@types/nodemailer": "^8.0.0"
   },
-  "scripts": {
-    "dev": "bun run index.ts",
-    "build": "bun build index.ts --target=bun --packages=external --outdir dist",
-    "start": "bun run dist/index.js"
-  },
   "peerDependencies": {
     "typescript": "^5"
   },
