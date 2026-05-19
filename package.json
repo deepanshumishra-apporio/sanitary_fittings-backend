@@ -15,7 +15,7 @@
     "typescript": "^5"
   },
   "scripts": {
-    "dev": "bun run index.ts",
+    "dev": "bun run build && bun run start",
     "build": "bun build index.ts --target=bun --packages=external --outdir dist",
     "start": "bun run dist/index.js"
   },
