@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS "Wishlist";
+DROP TABLE IF EXISTS "Review";

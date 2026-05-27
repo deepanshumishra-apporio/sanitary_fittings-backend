@@ -41,11 +41,8 @@ model User {
   updatedAt     DateTime       @updatedAt
 
   addresses     Address[]
-  cart          Cart[]
   orders        Order[]
-  wishlist      Wishlist[]
   payments      Payment[]
-  reviews       Review[]
   refreshTokens RefreshToken[]
 }
 
@@ -115,9 +112,6 @@ model Product {
 
   category    Category        @relation(fields: [categoryId], references: [id])
   orderItems  OrderItem[]
-  cartItems   Cart[]
-  wishlist    Wishlist[]
-  reviews     Review[]
   vendors     ProductVendor[]
 }
 
@@ -147,32 +141,6 @@ model OrderItem {
 
   order     Order   @relation(fields: [orderId], references: [id])
   product   Product @relation(fields: [productId], references: [id])
-}
-
-model Cart {
-  id        String   @id @default(uuid())
-  userId    String
-  productId String
-  quantity  Int
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  user      User     @relation(fields: [userId], references: [id])
-  product   Product  @relation(fields: [productId], references: [id])
-
-  @@unique([userId, productId])
-}
-
-model Wishlist {
-  id        String   @id @default(uuid())
-  userId    String
-  productId String
-  createdAt DateTime @default(now())
-
-  user      User     @relation(fields: [userId], references: [id])
-  product   Product  @relation(fields: [productId], references: [id])
-
-  @@unique([userId, productId])
 }
 
 model Address {
@@ -205,21 +173,6 @@ model Payment {
 
   user      User          @relation(fields: [userId], references: [id])
   order     Order         @relation(fields: [orderId], references: [id])
-}
-
-model Review {
-  id        String   @id @default(uuid())
-  userId    String
-  productId String
-  rating    Int
-  comment   String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  user      User     @relation(fields: [userId], references: [id])
-  product   Product  @relation(fields: [productId], references: [id])
-
-  @@unique([userId, productId])
 }
 
 model OtpCode {

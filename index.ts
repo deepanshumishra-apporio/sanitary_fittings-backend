@@ -53,9 +53,6 @@ app.use("/api/v1", (req, res, next) => {
   const privatePrefixes = [
     "/auth",
     "/order",
-    "/cart",
-    "/wishlist",
-    "/checkout",
     "/address",
   ];
 

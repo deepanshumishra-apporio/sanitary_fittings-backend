@@ -45,14 +45,7 @@ export async function listProducts(query: ProductQuery) {
 export async function getProduct(id: string) {
   const product = await prisma.product.findUnique({
     where: { id },
-    include: {
-      category: { select: categorySelect },
-      reviews: {
-        include: { user: { select: { id: true, name: true } } },
-        orderBy: { createdAt: "desc" },
-        take: 20,
-      },
-    },
+    include: productInclude,
   });
   if (!product) throw new AppError(404, "Product not found");
   return product;
