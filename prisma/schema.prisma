@@ -20,29 +20,13 @@ enum Role {
 }
 
 enum OrderStatus {
-  PENDING
-  CONFIRMED
-  PROCESSING
-  SHIPPED
-  DELIVERED
+  PLACED
   CANCELLED
-  REFUNDED
 }
 
 enum PaymentStatus {
-  PENDING
-  COMPLETED
-  FAILED
-  REFUNDED
-}
-
-enum PaymentMethod {
-  CREDIT_CARD
-  DEBIT_CARD
-  UPI
-  NET_BANKING
-  COD
-  WALLET
+  UNPAID
+  PAID
 }
 
 model User {
@@ -143,7 +127,7 @@ model Order {
   addressId  String?
   totalPrice Float
   discount   Float       @default(0)
-  status     OrderStatus @default(PENDING)
+  status     OrderStatus @default(PLACED)
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
 
@@ -211,19 +195,16 @@ model Address {
 }
 
 model Payment {
-  id               String        @id @default(uuid())
-  userId           String
-  orderId          String        @unique
-  amount           Float
-  status           PaymentStatus @default(PENDING)
-  method           PaymentMethod?
-  razorpayOrderId  String?       @unique
-  transactionId    String?       @unique
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  id        String        @id @default(uuid())
+  userId    String
+  orderId   String        @unique
+  amount    Float
+  status    PaymentStatus @default(UNPAID)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
 
-  user             User          @relation(fields: [userId], references: [id])
-  order            Order         @relation(fields: [orderId], references: [id])
+  user      User          @relation(fields: [userId], references: [id])
+  order     Order         @relation(fields: [orderId], references: [id])
 }
 
 model Review {

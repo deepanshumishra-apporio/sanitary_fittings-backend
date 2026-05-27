@@ -1,5 +1,10 @@
 import { handle } from "../lib/handler";
-import { createOrderSchema, updateOrderStatusSchema, manualOrderSchema } from "../validations/order.validation";
+import {
+  createOrderSchema,
+  updateOrderStatusSchema,
+  updatePaymentStatusSchema,
+  manualOrderSchema,
+} from "../validations/order.validation";
 import * as orderService from "../services/order.service";
 
 export const getMyOrders = handle(async (req, res) => {
@@ -38,6 +43,12 @@ export const createOrder = handle(async (req, res) => {
 export const updateOrderStatus = handle(async (req, res) => {
   const body = updateOrderStatusSchema.parse(req.body);
   const order = await orderService.updateOrderStatus(req.params.id as string, body);
+  res.json({ success: true, data: order });
+});
+
+export const updateOrderPaymentStatus = handle(async (req, res) => {
+  const body = updatePaymentStatusSchema.parse(req.body);
+  const order = await orderService.updateOrderPaymentStatus(req.params.id as string, body);
   res.json({ success: true, data: order });
 });
 

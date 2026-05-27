@@ -13,9 +13,6 @@ const REQUIRED_ENV = [
   "JWT_ACCESS_SECRET",
   "JWT_REFRESH_SECRET",
   "JWT_INTERNAL_SECRET",
-  "RAZORPAY_KEY_ID",
-  "RAZORPAY_KEY_SECRET",
-  "RAZORPAY_WEBHOOK_SECRET",
   "R2_ACCOUNT_ID",
   "R2_ACCESS_KEY_ID",
   "R2_SECRET_ACCESS_KEY",
@@ -47,9 +44,6 @@ app.use(
   })
 );
 
-// Webhooks need raw body so Svix can verify the HMAC signature — mount before express.json
-app.use("/api/v1/webhooks", express.raw({ type: "application/json", limit: "1mb" }));
-
 // Everything else gets JSON
 app.use(express.json({ limit: "10kb" }));
 
@@ -63,7 +57,6 @@ app.use("/api/v1", (req, res, next) => {
     "/wishlist",
     "/checkout",
     "/address",
-    "/payment",
   ];
 
   if (privatePrefixes.some((prefix) => req.path.startsWith(prefix))) {

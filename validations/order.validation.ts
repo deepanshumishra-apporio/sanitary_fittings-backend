@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const createOrderSchema = z.object({
-  addressId: z.string().min(1).optional(),
+  addressId: z.string().min(1),
   items: z
     .array(
       z.object({
@@ -13,7 +13,11 @@ export const createOrderSchema = z.object({
 });
 
 export const updateOrderStatusSchema = z.object({
-  status: z.enum(["PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED", "REFUNDED"]),
+  status: z.enum(["PLACED", "CANCELLED"]),
+});
+
+export const updatePaymentStatusSchema = z.object({
+  status: z.enum(["UNPAID", "PAID"]),
 });
 
 export const manualOrderSchema = z
@@ -48,4 +52,5 @@ export const manualOrderSchema = z
 
 export type CreateOrderDto = z.infer<typeof createOrderSchema>;
 export type UpdateOrderStatusDto = z.infer<typeof updateOrderStatusSchema>;
+export type UpdatePaymentStatusDto = z.infer<typeof updatePaymentStatusSchema>;
 export type ManualOrderDto = z.infer<typeof manualOrderSchema>;

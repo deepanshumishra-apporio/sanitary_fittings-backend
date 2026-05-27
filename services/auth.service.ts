@@ -6,7 +6,6 @@ import {
   signRefreshToken,
   verifyRefreshToken,
 } from "../lib/jwt";
-import type { OrderStatus } from "../generated/prisma/enums";
 
 export type AuthResult = {
   accessToken: string;
@@ -173,8 +172,6 @@ export async function getUserDetail(targetUserId: string) {
               id: true,
               amount: true,
               status: true,
-              method: true,
-              transactionId: true,
             },
           },
           items: {
@@ -301,9 +298,8 @@ export async function getUsers(
 }
 
 export async function getAnalytics(from?: Date, to?: Date) {
-  const activeStatuses: OrderStatus[] = ["PENDING", "CONFIRMED", "PROCESSING", "SHIPPED"];
-  const cancelledStatuses: OrderStatus[] = ["CANCELLED", "REFUNDED"];
-  const billableStatuses: OrderStatus[] = [...activeStatuses, "DELIVERED"];
+  const placedStatus = "PLACED";
+  const cancelledStatus = "CANCELLED";
 
   const dateWhere = from || to
     ? { createdAt: { ...(from && { gte: from }), ...(to && { lte: to }) } }
@@ -330,23 +326,23 @@ export async function getAnalytics(from?: Date, to?: Date) {
     prisma.order.aggregate({
       _sum: { totalPrice: true },
       _avg: { totalPrice: true },
-      where: { status: { in: billableStatuses }, ...dateWhere },
+      where: { status: placedStatus, ...dateWhere },
     }),
     prisma.order.aggregate({
       _sum: { totalPrice: true },
-      where: { status: "DELIVERED", ...dateWhere },
+      where: { status: placedStatus, ...dateWhere },
     }),
     prisma.order.aggregate({
       _sum: { totalPrice: true },
-      where: { status: { in: activeStatuses }, ...dateWhere },
+      where: { status: placedStatus, ...dateWhere },
     }),
     prisma.order.aggregate({
       _sum: { totalPrice: true },
-      where: { status: { in: cancelledStatuses }, ...dateWhere },
+      where: { status: cancelledStatus, ...dateWhere },
     }),
-    prisma.order.count({ where: { status: { in: activeStatuses }, ...dateWhere } }),
-    prisma.order.count({ where: { status: "DELIVERED", ...dateWhere } }),
-    prisma.order.count({ where: { status: { in: cancelledStatuses }, ...dateWhere } }),
+    prisma.order.count({ where: { status: placedStatus, ...dateWhere } }),
+    prisma.order.count({ where: { status: placedStatus, ...dateWhere } }),
+    prisma.order.count({ where: { status: cancelledStatus, ...dateWhere } }),
     prisma.order.groupBy({ by: ["status"], _count: { status: true }, where: { ...dateWhere } }),
     prisma.order.findMany({
       take: 6,
@@ -362,7 +358,7 @@ export async function getAnalytics(from?: Date, to?: Date) {
     }),
     prisma.order.findMany({
       where: {
-        status: { in: billableStatuses },
+        status: placedStatus,
         createdAt: {
           gte: from ?? new Date(Date.now() - 29 * 24 * 60 * 60 * 1000),
           lte: to ?? new Date(),

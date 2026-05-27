@@ -1,6 +1,11 @@
 import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/errors";
-import type { CreateOrderDto, UpdateOrderStatusDto, ManualOrderDto } from "../validations/order.validation";
+import type {
+  CreateOrderDto,
+  UpdateOrderStatusDto,
+  UpdatePaymentStatusDto,
+  ManualOrderDto,
+} from "../validations/order.validation";
 
 const orderInclude = {
   items: {
@@ -12,9 +17,6 @@ const orderInclude = {
       id: true,
       amount: true,
       status: true,
-      method: true,
-      razorpayOrderId: true,
-      transactionId: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -122,17 +124,95 @@ export async function createOrder(userId: string, dto: CreateOrderDto) {
       });
     }
     return tx.order.create({
-      data: { userId, addressId: dto.addressId, totalPrice, discount, items: { create: orderItems } },
+      data: {
+        userId,
+        addressId: dto.addressId,
+        totalPrice,
+        discount,
+        items: { create: orderItems },
+        payment: {
+          create: {
+            userId,
+            amount: totalPrice,
+            status: "UNPAID",
+          },
+        },
+      },
       include: orderInclude,
     });
   });
 }
 
 export async function updateOrderStatus(orderId: string, dto: UpdateOrderStatusDto) {
-  const order = await prisma.order.findUnique({ where: { id: orderId }, select: { id: true } });
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { items: true },
+  });
   if (!order) throw new AppError(404, "Order not found");
 
+  if (order.status === dto.status) {
+    return prisma.order.findUniqueOrThrow({ where: { id: orderId }, include: orderInclude });
+  }
+
+  if (dto.status === "PLACED") {
+    throw new AppError(400, "Orders cannot be moved back to PLACED");
+  }
+
+  if (dto.status === "CANCELLED" && order.status !== "PLACED") {
+    throw new AppError(400, `Cannot cancel a ${order.status} order`);
+  }
+
+  if (dto.status === "CANCELLED") {
+    return prisma.$transaction(async (tx) => {
+      for (const item of order.items) {
+        await tx.product.update({
+          where: { id: item.productId },
+          data: { stock: { increment: item.quantity } },
+        });
+        await tx.productVendor.updateMany({
+          where: { productId: item.productId, isActive: true },
+          data: { stock: { increment: item.quantity } },
+        });
+      }
+
+      return tx.order.update({
+        where: { id: orderId },
+        data: { status: "CANCELLED" },
+        include: orderInclude,
+      });
+    });
+  }
+
   return prisma.order.update({ where: { id: orderId }, data: { status: dto.status }, include: orderInclude });
+}
+
+export async function updateOrderPaymentStatus(orderId: string, dto: UpdatePaymentStatusDto) {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: { id: true, userId: true, status: true, totalPrice: true, payment: { select: { id: true } } },
+  });
+  if (!order) throw new AppError(404, "Order not found");
+
+  return prisma.$transaction(async (tx) => {
+    await tx.payment.upsert({
+      where: { orderId },
+      create: {
+        orderId,
+        userId: order.userId,
+        amount: order.totalPrice,
+        status: dto.status,
+      },
+      update: {
+        status: dto.status,
+      },
+    });
+
+    return tx.order.update({
+      where: { id: orderId },
+      data: { status: order.status },
+      include: orderInclude,
+    });
+  });
 }
 
 export async function createManualOrder(dto: ManualOrderDto) {
@@ -237,8 +317,15 @@ export async function createManualOrder(dto: ManualOrderDto) {
         ...(address && { addressId: address.id }),
         totalPrice,
         discount: discountAmount,
-        status: "CONFIRMED",
+        status: "PLACED",
         items: { create: orderItems },
+        payment: {
+          create: {
+            userId: targetUserId,
+            amount: totalPrice,
+            status: "UNPAID",
+          },
+        },
       },
       include: {
         ...orderInclude,
@@ -253,7 +340,7 @@ export async function cancelOrder(orderId: string, userId: string) {
   if (!order) throw new AppError(404, "Order not found");
   if (order.userId !== userId) throw new AppError(403, "Forbidden");
 
-  const cancellable = ["PENDING", "CONFIRMED"];
+  const cancellable = ["PLACED"];
   if (!cancellable.includes(order.status)) throw new AppError(400, `Cannot cancel a ${order.status} order`);
 
   await prisma.$transaction(async (tx) => {

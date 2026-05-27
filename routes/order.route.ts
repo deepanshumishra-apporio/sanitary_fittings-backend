@@ -6,6 +6,7 @@ import {
   getOrderById,
   createOrder,
   updateOrderStatus,
+  updateOrderPaymentStatus,
   cancelOrder,
   createManualOrder,
 } from "../controllers/order.controller";
@@ -24,5 +25,6 @@ orderRoutes.post("/manual", requireAuth, requireRole("ADMIN", "SUBADMIN"), creat
 orderRoutes.get("/", requireAuth, requireRole("ADMIN", "SUBADMIN"), getOrders);
 orderRoutes.get("/:id", requireAuth, requireRole("ADMIN", "SUBADMIN"), getOrderById);
 orderRoutes.patch("/:id/status", requireAuth, requireRole("ADMIN", "SUBADMIN"), updateOrderStatus);
+orderRoutes.patch("/:id/payment-status", requireAuth, requireRole("ADMIN", "SUBADMIN"), updateOrderPaymentStatus);
 
 export default orderRoutes;

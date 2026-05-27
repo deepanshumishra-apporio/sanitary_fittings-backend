@@ -78,6 +78,10 @@ export async function confirmCheckout(userId: string, dto: CheckoutDto) {
         where: { id: item.productId },
         data: { stock: { decrement: item.quantity } },
       });
+      await tx.productVendor.updateMany({
+        where: { productId: item.productId, isActive: true },
+        data: { stock: { decrement: item.quantity } },
+      });
     }
 
     const order = await tx.order.create({
@@ -87,12 +91,28 @@ export async function confirmCheckout(userId: string, dto: CheckoutDto) {
         totalPrice,
         discount,
         items: { create: orderItems },
+        payment: {
+          create: {
+            userId,
+            amount: totalPrice,
+            status: "UNPAID",
+          },
+        },
       },
       include: {
         items: {
           include: { product: { select: { id: true, name: true, price: true, images: true } } },
         },
         address: true,
+        payment: {
+          select: {
+            id: true,
+            amount: true,
+            status: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
       },
     });
 
