@@ -61,7 +61,7 @@ app.use(
 );
 
 // Everything else gets JSON
-app.use(express.json({ limit: "10kb" }));
+app.use(express.json({ limit: "1mb" }));
 
 app.use(cookieParser());
 
