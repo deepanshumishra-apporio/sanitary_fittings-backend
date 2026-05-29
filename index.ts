@@ -34,6 +34,13 @@ const port = Number(process.env.PORT || process.env.BACKEND_PORT || 3001);
 // ─── App ──────────────────────────────────────────────────────────────────────
 
 const app = express();
+
+// Render (and most cloud platforms) sit behind a reverse proxy that injects
+// X-Forwarded-For. Without this, express-rate-limit throws a ValidationError
+// (ERR_ERL_UNEXPECTED_X_FORWARDED_FOR) and crashes the request before any
+// response is sent — producing status 0 on the mobile client.
+app.set("trust proxy", 1);
+
 const allowedOrigins = [
   process.env.FRONTEND_URL,
   process.env.MOBILE_URL,
