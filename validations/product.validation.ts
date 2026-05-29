@@ -1,18 +1,35 @@
 import { z } from "zod";
 
+export const productVendorEntrySchema = z.object({
+  vendorId: z.uuid(),
+  price: z.coerce.number().positive(),
+  stock: z.coerce.number().int().min(0),
+  sku: z.string().trim().max(100).optional(),
+});
+
+// Multipart sends arrays/objects as JSON strings — parse them back.
+const jsonArrayPreprocess = (v: unknown) => {
+  if (typeof v !== "string") return v;
+  try {
+    return JSON.parse(v);
+  } catch {
+    return v;
+  }
+};
+
 export const createProductSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
   price: z.coerce.number().min(0),
   discount: z.coerce.number().min(0).max(100).default(0),
   stock: z.coerce.number().int().min(0).default(0),
-  categoryId: z.string().uuid(),
+  categoryId: z.uuid(),
   images: z.preprocess((v) => (typeof v === "string" ? [v] : v), z.array(z.string()).optional()),
-  videos: z.preprocess((v) => (typeof v === "string" ? [v] : v), z.array(z.string()).optional()),
+  vendors: z.preprocess(jsonArrayPreprocess, z.array(productVendorEntrySchema).optional()),
 });
 
 export const updateProductSchema = createProductSchema
-  .omit({ stock: true })
+  .omit({ stock: true, vendors: true })
   .partial();
 
 export const productQuerySchema = z.object({

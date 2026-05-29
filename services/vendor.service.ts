@@ -48,8 +48,14 @@ export async function updateVendor(id: string, dto: UpdateVendorDto) {
 }
 
 export async function deleteVendor(id: string) {
-  const vendor = await prisma.vendor.findUnique({ where: { id } });
+  const vendor = await prisma.vendor.findUnique({
+    where: { id },
+    select: { id: true, _count: { select: { products: true } } },
+  });
   if (!vendor) throw new AppError(404, "Vendor not found");
+  if (vendor._count.products > 0) {
+    throw new AppError(409, "Vendor is linked to one or more products; remove those links first");
+  }
   await prisma.vendor.delete({ where: { id } });
 }
 
@@ -68,22 +74,22 @@ export async function getProductVendors(productId: string) {
 
 export async function addProductVendor(productId: string, dto: AddProductVendorDto) {
   const [product, vendor] = await Promise.all([
-    prisma.product.findUnique({ where: { id: productId }, select: { id: true, discount: true } }),
+    prisma.product.findUnique({ where: { id: productId }, select: { id: true } }),
     prisma.vendor.findUnique({ where: { id: dto.vendorId }, select: { id: true } }),
   ]);
   if (!product) throw new AppError(404, "Product not found");
   if (!vendor) throw new AppError(404, "Vendor not found");
-  if (dto.price < product.discount) throw new AppError(400, "Vendor price cannot be less than product discount");
-
-  const exists = await prisma.productVendor.findUnique({
-    where: { productId_vendorId: { productId, vendorId: dto.vendorId } },
-  });
-  if (exists) throw new AppError(409, "Vendor already linked to this product");
-
-  const count = await prisma.productVendor.count({ where: { productId } });
-  const isFirst = count === 0;
 
   return prisma.$transaction(async (tx) => {
+    const exists = await tx.productVendor.findUnique({
+      where: { productId_vendorId: { productId, vendorId: dto.vendorId } },
+      select: { id: true },
+    });
+    if (exists) throw new AppError(409, "Vendor already linked to this product");
+
+    const count = await tx.productVendor.count({ where: { productId } });
+    const isFirst = count === 0;
+
     const entry = await tx.productVendor.create({
       data: { productId, vendorId: dto.vendorId, price: dto.price, stock: dto.stock, sku: dto.sku, isActive: isFirst },
       include: { vendor: { select: vendorSelect } },
@@ -96,15 +102,13 @@ export async function addProductVendor(productId: string, dto: AddProductVendorD
 }
 
 export async function setActiveVendor(productId: string, vendorId: string) {
-  const entry = await prisma.productVendor.findUnique({
-    where: { productId_vendorId: { productId, vendorId } },
-  });
-  if (!entry) throw new AppError(404, "Vendor not linked to this product");
-  const product = await prisma.product.findUnique({ where: { id: productId }, select: { discount: true } });
-  if (!product) throw new AppError(404, "Product not found");
-  if (entry.price < product.discount) throw new AppError(400, "Vendor price cannot be less than product discount");
-
   return prisma.$transaction(async (tx) => {
+    const entry = await tx.productVendor.findUnique({
+      where: { productId_vendorId: { productId, vendorId } },
+      select: { price: true, stock: true },
+    });
+    if (!entry) throw new AppError(404, "Vendor not linked to this product");
+
     await tx.productVendor.updateMany({ where: { productId }, data: { isActive: false } });
     const active = await tx.productVendor.update({
       where: { productId_vendorId: { productId, vendorId } },
@@ -117,16 +121,13 @@ export async function setActiveVendor(productId: string, vendorId: string) {
 }
 
 export async function updateProductVendor(productId: string, vendorId: string, dto: UpdateProductVendorDto) {
-  const entry = await prisma.productVendor.findUnique({
-    where: { productId_vendorId: { productId, vendorId } },
-  });
-  if (!entry) throw new AppError(404, "Vendor not linked to this product");
-  const product = await prisma.product.findUnique({ where: { id: productId }, select: { discount: true } });
-  if (!product) throw new AppError(404, "Product not found");
-  const nextPrice = dto.price ?? entry.price;
-  if (nextPrice < product.discount) throw new AppError(400, "Vendor price cannot be less than product discount");
-
   return prisma.$transaction(async (tx) => {
+    const entry = await tx.productVendor.findUnique({
+      where: { productId_vendorId: { productId, vendorId } },
+      select: { isActive: true },
+    });
+    if (!entry) throw new AppError(404, "Vendor not linked to this product");
+
     const updated = await tx.productVendor.update({
       where: { productId_vendorId: { productId, vendorId } },
       data: dto,
@@ -146,12 +147,13 @@ export async function updateProductVendor(productId: string, vendorId: string, d
 }
 
 export async function removeProductVendor(productId: string, vendorId: string) {
-  const entry = await prisma.productVendor.findUnique({
-    where: { productId_vendorId: { productId, vendorId } },
-  });
-  if (!entry) throw new AppError(404, "Vendor not linked to this product");
-
   await prisma.$transaction(async (tx) => {
+    const entry = await tx.productVendor.findUnique({
+      where: { productId_vendorId: { productId, vendorId } },
+      select: { isActive: true },
+    });
+    if (!entry) throw new AppError(404, "Vendor not linked to this product");
+
     await tx.productVendor.delete({ where: { productId_vendorId: { productId, vendorId } } });
 
     if (entry.isActive) {
@@ -163,7 +165,7 @@ export async function removeProductVendor(productId: string, vendorId: string) {
         await tx.productVendor.update({ where: { id: next.id }, data: { isActive: true } });
         await tx.product.update({ where: { id: productId }, data: { stock: next.stock, price: next.price } });
       } else {
-        await tx.product.update({ where: { id: productId }, data: { stock: 0 } });
+        await tx.product.update({ where: { id: productId }, data: { stock: 0, price: 0 } });
       }
     }
   });

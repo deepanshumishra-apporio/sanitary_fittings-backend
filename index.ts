@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
+import multer from "multer";
 import router from "./routes";
 
 // ─── Startup Validation ───────────────────────────────────────────────────────
@@ -27,17 +28,32 @@ for (const key of REQUIRED_ENV) {
   }
 }
 
+const host = process.env.HOST || "0.0.0.0";
 const port = Number(process.env.PORT || process.env.BACKEND_PORT || 3001);
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 
 const app = express();
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  process.env.MOBILE_URL,
+  ...(process.env.NODE_ENV !== "production"
+    ? ["http://localhost:8081", "http://localhost:19006", "http://localhost:4174"]
+    : []),
+].filter(Boolean) as string[];
 
 app.use(helmet());
 
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL,
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error(`CORS blocked origin: ${origin}`));
+    },
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
@@ -76,6 +92,20 @@ app.use("/api/v1", router);
 
 app.use(
   (err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    if (err instanceof multer.MulterError) {
+      const message =
+        err.code === "LIMIT_FILE_SIZE"
+          ? "File is too large (10 MB max per image)"
+          : err.code === "LIMIT_UNEXPECTED_FILE"
+            ? "Unexpected file field"
+            : err.message;
+      res.status(400).json({ error: message });
+      return;
+    }
+    if (err.message === "Only image files are allowed") {
+      res.status(400).json({ error: err.message });
+      return;
+    }
     console.error("[UnhandledError]", err);
     res.status(500).json({ error: "Internal server error" });
   }
@@ -83,6 +113,11 @@ app.use(
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 
-app.listen(port, () => {
-  console.log(`[Server] Running on port ${port}`);
+const server = app.listen(port, host, () => {
+  console.log(`[Server] Running on http://${host}:${port}`);
+});
+
+server.on("error", (error) => {
+  console.error("[Server] Failed to start", error);
+  process.exit(1);
 });

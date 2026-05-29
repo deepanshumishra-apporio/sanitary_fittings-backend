@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 
 const r2 = new S3Client({
   region: "auto",
@@ -11,12 +11,11 @@ const r2 = new S3Client({
 
 export async function uploadToR2(
   file: Express.Multer.File,
-  productId: string,
-  type: "image" | "video"
-): Promise<string> {
+  productId: string
+): Promise<{ key: string; url: string }> {
   const ext = file.originalname.split(".").pop();
   const baseName = file.originalname.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "_");
-  const key = `product/${productId}/${type}/${baseName}${Date.now()}.${ext}`;
+  const key = `product/${productId}/image/${baseName}${Date.now()}.${ext}`;
 
   await r2.send(
     new PutObjectCommand({
@@ -27,5 +26,16 @@ export async function uploadToR2(
     })
   );
 
-  return `${process.env.R2_PUBLIC_URL}/${key}`;
+  return { key, url: `${process.env.R2_PUBLIC_URL}/${key}` };
+}
+
+export async function deleteFromR2(keys: string[]): Promise<void> {
+  if (keys.length === 0) return;
+  await Promise.all(
+    keys.map((key) =>
+      r2.send(
+        new DeleteObjectCommand({ Bucket: process.env.R2_BUCKET_NAME!, Key: key })
+      )
+    )
+  );
 }

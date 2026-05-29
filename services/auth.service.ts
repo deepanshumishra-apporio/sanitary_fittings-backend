@@ -260,6 +260,27 @@ export async function createSubadmin(dto: {
   });
 }
 
+export async function createCustomer(dto: {
+  email: string;
+  name?: string;
+  phone?: string;
+}) {
+  const email = normalize(dto.email);
+  const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+  if (existing) throw new AppError(409, "An account with this email already exists");
+
+  return prisma.user.create({
+    data: {
+      email,
+      name: dto.name ?? null,
+      phone: dto.phone ?? null,
+      role: "CUSTOMER",
+      emailVerified: true,
+    },
+    select: { id: true, email: true, name: true, phone: true, role: true, createdAt: true },
+  });
+}
+
 export async function getUsers(
   page: number,
   limit: number,

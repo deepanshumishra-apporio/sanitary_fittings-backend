@@ -105,7 +105,6 @@ model Product {
   discount    Float           @default(0)
   stock       Int
   images      String[]
-  videos      String[]
   categoryId  String
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt

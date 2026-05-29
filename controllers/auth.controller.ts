@@ -120,6 +120,12 @@ const createSubadminSchema = z.object({
   phone: z.string().trim().max(30).optional(),
 });
 
+const createCustomerSchema = z.object({
+  email: z.string().trim().toLowerCase().pipe(z.email()),
+  name: z.string().trim().min(2).max(100).optional(),
+  phone: z.string().trim().max(30).optional(),
+});
+
 const adminUpdateUserSchema = z.object({
   name: z.string().trim().max(100).optional(),
   phone: z.string().trim().max(30).optional(),
@@ -149,6 +155,12 @@ export const adminSetPassword = handle(async (req, res) => {
 export const createSubadmin = handle(async (req, res) => {
   const dto = createSubadminSchema.parse(req.body);
   const user = await AuthService.createSubadmin(dto);
+  res.status(201).json({ success: true, data: user });
+});
+
+export const createCustomer = handle(async (req, res) => {
+  const dto = createCustomerSchema.parse(req.body);
+  const user = await AuthService.createCustomer(dto);
   res.status(201).json({ success: true, data: user });
 });
 

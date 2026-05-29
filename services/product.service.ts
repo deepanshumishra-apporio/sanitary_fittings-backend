@@ -76,14 +76,57 @@ export async function listByCategory(categoryId: string, page: number, limit: nu
   };
 }
 
-export async function createProduct(dto: CreateProductDto) {
+export async function createProduct(dto: CreateProductDto, opts: { id?: string } = {}) {
+  const { vendors = [], ...productData } = dto;
+
   const category = await prisma.category.findUnique({
     where: { id: dto.categoryId },
     select: { id: true },
   });
   if (!category) throw new AppError(400, "Category not found");
 
-  return prisma.product.create({ data: dto, include: productInclude });
+  if (vendors.length > 0) {
+    const vendorIds = vendors.map((v) => v.vendorId);
+    if (new Set(vendorIds).size !== vendorIds.length) {
+      throw new AppError(400, "Duplicate vendors in list");
+    }
+
+    const found = await prisma.vendor.findMany({
+      where: { id: { in: vendorIds } },
+      select: { id: true },
+    });
+    if (found.length !== vendorIds.length) {
+      throw new AppError(400, "One or more vendors not found");
+    }
+  }
+
+  const firstVendor = vendors[0];
+
+  return prisma.$transaction(async (tx) => {
+    const product = await tx.product.create({
+      data: {
+        ...(opts.id && { id: opts.id }),
+        ...productData,
+        ...(firstVendor && { price: firstVendor.price, stock: firstVendor.stock }),
+      },
+      include: productInclude,
+    });
+
+    if (vendors.length > 0) {
+      await tx.productVendor.createMany({
+        data: vendors.map((v, i) => ({
+          productId: product.id,
+          vendorId: v.vendorId,
+          price: v.price,
+          stock: v.stock,
+          sku: v.sku,
+          isActive: i === 0,
+        })),
+      });
+    }
+
+    return product;
+  });
 }
 
 export async function updateProduct(id: string, dto: UpdateProductDto) {
@@ -98,20 +141,21 @@ export async function updateProduct(id: string, dto: UpdateProductDto) {
     if (!category) throw new AppError(400, "Category not found");
   }
 
-  // discount is a percentage, just validate 0-100 (Zod already does this)
-
-  // Never overwrite stock — it's owned by ProductVendor
-  const { stock, ...safeDto } = dto as any;
-
   return prisma.product.update({
     where: { id },
-    data: safeDto,
+    data: dto,
     include: productInclude,
   });
 }
 
 export async function deleteProduct(id: string) {
-  const exists = await prisma.product.findUnique({ where: { id }, select: { id: true } });
+  const exists = await prisma.product.findUnique({
+    where: { id },
+    select: { id: true, _count: { select: { orderItems: true } } },
+  });
   if (!exists) throw new AppError(404, "Product not found");
+  if (exists._count.orderItems > 0) {
+    throw new AppError(409, "Product has existing orders and cannot be deleted");
+  }
   await prisma.product.delete({ where: { id } });
 }
