@@ -44,6 +44,7 @@ export const manualOrderSchema = z
         })
       )
       .min(1, "At least one item is required"),
+    paymentStatus: z.enum(["UNPAID", "PAID"]).default("UNPAID"),
   })
   .refine((d) => d.userId || d.customerEmail, {
     message: "Provide either a user ID or a customer email",

@@ -323,7 +323,7 @@ export async function createManualOrder(dto: ManualOrderDto) {
           create: {
             userId: targetUserId,
             amount: totalPrice,
-            status: "UNPAID",
+            status: dto.paymentStatus ?? "UNPAID",
           },
         },
       },
