@@ -76,9 +76,10 @@ export async function listByCategory(categoryId: string, page: number, limit: nu
   };
 }
 
-export async function createProduct(dto: CreateProductDto, opts: { id?: string } = {}) {
+export async function createProduct(dto: CreateProductDto) {
   const { vendors = [], ...productData } = dto;
 
+  // ── Pre-flight validation (fast-fail before opening a transaction) ────────
   const category = await prisma.category.findUnique({
     where: { id: dto.categoryId },
     select: { id: true },
@@ -87,6 +88,7 @@ export async function createProduct(dto: CreateProductDto, opts: { id?: string }
 
   if (vendors.length > 0) {
     const vendorIds = vendors.map((v) => v.vendorId);
+
     if (new Set(vendorIds).size !== vendorIds.length) {
       throw new AppError(400, "Duplicate vendors in list");
     }
@@ -100,14 +102,18 @@ export async function createProduct(dto: CreateProductDto, opts: { id?: string }
     }
   }
 
-  const firstVendor = vendors[0];
+  // ── Transaction: product row + all vendor pivot rows atomically ───────────
+  const activeVendor = vendors[0];
 
   return prisma.$transaction(async (tx) => {
     const product = await tx.product.create({
       data: {
-        ...(opts.id && { id: opts.id }),
         ...productData,
-        ...(firstVendor && { price: firstVendor.price, stock: firstVendor.stock }),
+        // Active vendor drives the denormalised price/stock on the product row
+        ...(activeVendor && {
+          price: activeVendor.price,
+          stock: activeVendor.stock,
+        }),
       },
       include: productInclude,
     });
