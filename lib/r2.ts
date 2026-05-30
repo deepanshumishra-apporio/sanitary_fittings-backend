@@ -66,13 +66,21 @@ export async function getPresignedPutUrl(
     protocol: "https:",
     hostname,
     path: `/${bucket}/${key}`,
-    headers: { host: hostname },
+    headers: {
+      host: hostname,
+      // Tell getPayloadHash to use UNSIGNED-PAYLOAD instead of SHA256("").
+      // Must be unhoistable (stay as a header) so moveHeadersToQuery doesn't
+      // push it into the query string, and unsignable so the mobile upload
+      // request is not required to include it.
+      "x-amz-content-sha256": "UNSIGNED-PAYLOAD",
+    },
     query: {},
   });
 
   const signed = await signer.presign(request, {
     expiresIn: 300,
-    unsignableHeaders: new Set(["content-type", "content-length"]),
+    unsignableHeaders: new Set(["content-type", "content-length", "x-amz-content-sha256"]),
+    unhoistableHeaders: new Set(["x-amz-content-sha256"]),
   });
 
   const qs = Object.entries(signed.query as Record<string, string | string[]>)
