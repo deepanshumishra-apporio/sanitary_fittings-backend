@@ -1,5 +1,6 @@
 import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/errors";
+import { ensureCompanyVendorLink } from "./company-vendor-link.service";
 import type {
   CreateVendorDto,
   UpdateVendorDto,
@@ -80,7 +81,7 @@ export async function getProductVendors(productId: string) {
 
 export async function addProductVendor(productId: string, dto: AddProductVendorDto) {
   const [product, vendor] = await Promise.all([
-    prisma.product.findUnique({ where: { id: productId }, select: { id: true } }),
+    prisma.product.findUnique({ where: { id: productId }, select: { id: true, companyId: true } }),
     prisma.vendor.findUnique({ where: { id: dto.vendorId }, select: { id: true } }),
   ]);
   if (!product) throw new AppError(404, "Product not found");
@@ -100,6 +101,8 @@ export async function addProductVendor(productId: string, dto: AddProductVendorD
       data: { productId, vendorId: dto.vendorId, price: dto.price, stock: dto.stock, sku: dto.sku, isActive: isFirst },
       include: { vendor: { select: vendorSelect } },
     });
+    await ensureCompanyVendorLink(tx, product.companyId, dto.vendorId);
+
     if (isFirst) {
       await tx.product.update({ where: { id: productId }, data: { stock: dto.stock, price: dto.price } });
     }

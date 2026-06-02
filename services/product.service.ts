@@ -1,6 +1,7 @@
 import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/errors";
 import type { CreateProductDto, UpdateProductDto, ProductQuery } from "../validations/product.validation";
+import { ensureCompanyVendorLinks } from "./company-vendor-link.service";
 
 const categorySelect = { id: true, name: true };
 const subCategorySelect = { id: true, name: true, categoryId: true };
@@ -156,6 +157,8 @@ export async function createProduct(dto: CreateProductDto) {
           isActive: i === 0,
         })),
       });
+
+      await ensureCompanyVendorLinks(tx, product.companyId, vendors.map((v) => v.vendorId));
     }
 
     return product;

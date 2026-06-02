@@ -1,6 +1,7 @@
 import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/errors";
 import type { CreateRateEntryDto, RateEntryQueryDto } from "../validations/rate-entry.validation";
+import { ensureCompanyVendorLink } from "./company-vendor-link.service";
 
 const rateEntryInclude = {
   product: {
@@ -111,7 +112,7 @@ export async function createRateEntry(dto: CreateRateEntryDto) {
   if (!product) throw new AppError(404, "Product not found");
   if (!vendor) throw new AppError(404, "Vendor not found");
   if (!company) throw new AppError(404, "Company not found");
-  if (!mapping || !mapping.isActive) throw new AppError(400, "Vendor is not active for this company");
+  if (mapping && !mapping.isActive) throw new AppError(400, "Vendor is not active for this company");
   if (product.companyId && product.companyId !== dto.companyId) {
     throw new AppError(400, "Product is linked to a different company");
   }
@@ -129,6 +130,10 @@ export async function createRateEntry(dto: CreateRateEntryDto) {
   if (duplicate) throw new AppError(409, "A rate entry already exists for this product, vendor, company, date, and bill number");
 
   return prisma.$transaction(async (tx) => {
+    if (!mapping) {
+      await ensureCompanyVendorLink(tx, dto.companyId, dto.vendorId);
+    }
+
     const latestForPair = await tx.rateEntry.findFirst({
       where: {
         productId: dto.productId,
