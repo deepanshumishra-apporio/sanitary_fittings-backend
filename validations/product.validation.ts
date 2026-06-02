@@ -24,6 +24,8 @@ export const createProductSchema = z.object({
   discount: z.coerce.number().min(0).max(100).default(0),
   stock: z.coerce.number().int().min(0).default(0),
   categoryId: z.uuid(),
+  subCategoryId: z.uuid().nullable().optional(),
+  companyId: z.uuid().nullable().optional(),
   images: z.preprocess((v) => (typeof v === "string" ? [v] : v), z.array(z.string()).optional()),
   vendors: z.preprocess(jsonArrayPreprocess, z.array(productVendorEntrySchema).optional()),
 });
@@ -37,6 +39,8 @@ export const productQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
   search: z.string().optional(),
   category: z.string().optional(),
+  subCategory: z.string().optional(),
+  company: z.string().optional(),
   minPrice: z.coerce.number().optional(),
   maxPrice: z.coerce.number().optional(),
   sortBy: z.enum(["createdAt", "price", "name"]).default("createdAt"),
