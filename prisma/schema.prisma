@@ -60,21 +60,65 @@ model Category {
   id          String    @id @default(uuid())
   name        String    @unique
   description String?
+  subCategories SubCategory[]
   products    Product[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 }
 
+model SubCategory {
+  id          String    @id @default(uuid())
+  categoryId  String
+  name        String
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  category    Category  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  products    Product[]
+
+  @@unique([categoryId, name])
+}
+
+model Company {
+  id          String          @id @default(uuid())
+  name        String          @unique
+  description String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  products    Product[]
+  vendors     CompanyVendor[]
+  rateEntries RateEntry[]
+}
+
 model Vendor {
   id          String          @id @default(uuid())
   name        String
-  email       String          @unique
+  email       String?         @unique
   phone       String?
   address     String?
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 
   products    ProductVendor[]
+  companies   CompanyVendor[]
+  rateEntries RateEntry[]
+}
+
+model CompanyVendor {
+  id         String    @id @default(uuid())
+  companyId  String
+  vendorId   String
+  code       String?
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  company    Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  vendor     Vendor    @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, vendorId])
 }
 
 model ProductVendor {
@@ -103,12 +147,39 @@ model Product {
   stock       Int
   images      String[]
   categoryId  String
+  subCategoryId String?
+  companyId   String?
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 
   category    Category        @relation(fields: [categoryId], references: [id])
+  subCategory SubCategory?    @relation(fields: [subCategoryId], references: [id], onDelete: Restrict)
+  company     Company?        @relation(fields: [companyId], references: [id], onDelete: Restrict)
   orderItems  OrderItem[]
   vendors     ProductVendor[]
+  rateEntries RateEntry[]
+}
+
+model RateEntry {
+  id            String    @id @default(uuid())
+  productId     String
+  vendorId      String
+  companyId     String
+  rate          Float
+  previousRate  Float?
+  effectiveDate DateTime
+  billNo        String?
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  product       Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
+  vendor        Vendor    @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  company       Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  @@index([companyId, vendorId, effectiveDate])
+  @@index([productId, effectiveDate])
+  @@unique([productId, vendorId, companyId, effectiveDate, billNo])
 }
 
 model Order {

@@ -77,6 +77,9 @@ app.use("/api/v1", (req, res, next) => {
     "/auth",
     "/order",
     "/address",
+    "/company",
+    "/rate-entry",
+    "/subcategory",
   ];
 
   if (privatePrefixes.some((prefix) => req.path.startsWith(prefix))) {

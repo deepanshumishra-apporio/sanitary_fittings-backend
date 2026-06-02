@@ -24,7 +24,7 @@ productRoutes.get("/:id", getProductById);
 productRoutes.post("/upload-url", requireAuth, requireRole("ADMIN", "SUBADMIN"), getUploadUrl);
 
 // JSON body only — images must already be on R2 via presigned upload
-productRoutes.post("/", requireAuth, requireRole("ADMIN", "SUBADMIN"), createProduct);
+productRoutes.post("/", requireAuth, requireRole("ADMIN", "SUBADMIN"), upload.array("files"), createProduct);
 
 // Accepts multipart/form-data (file uploads) or JSON
 productRoutes.put("/:id", requireAuth, requireRole("ADMIN", "SUBADMIN"), upload.array("files"), updateProduct);

@@ -19,6 +19,10 @@ export async function getVendor(id: string) {
   const vendor = await prisma.vendor.findUnique({
     where: { id },
     include: {
+      companies: {
+        include: { company: { select: { id: true, name: true } } },
+        orderBy: { createdAt: "desc" },
+      },
       products: {
         include: { product: { select: { id: true, name: true, images: true } } },
         orderBy: { createdAt: "desc" },
@@ -30,8 +34,10 @@ export async function getVendor(id: string) {
 }
 
 export async function createVendor(dto: CreateVendorDto) {
-  const exists = await prisma.vendor.findUnique({ where: { email: dto.email } });
-  if (exists) throw new AppError(409, "Vendor with this email already exists");
+  if (dto.email) {
+    const exists = await prisma.vendor.findUnique({ where: { email: dto.email } });
+    if (exists) throw new AppError(409, "Vendor with this email already exists");
+  }
   return prisma.vendor.create({ data: dto });
 }
 

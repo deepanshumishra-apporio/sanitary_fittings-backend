@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { handle } from "../lib/handler";
 import {
   createProductSchema,
@@ -94,11 +95,22 @@ export const getProductsByCategory = handle(async (req, res) => {
  * deleted so storage stays consistent.
  */
 export const createProduct = handle(async (req, res) => {
-  const body = createProductSchema.parse(req.body);
+  const files = (req.files as Express.Multer.File[]) ?? [];
+  const uploaded = await uploadImageFiles(files, randomUUID());
+  const parsedImages = [...parseUrls(req.body.images), ...uploaded.map((u) => u.url)];
+  const hasImages = req.body.images !== undefined || uploaded.length > 0;
+
+  const body = createProductSchema.parse({
+    ...req.body,
+    ...(hasImages && { images: parsedImages }),
+  });
   const images = body.images ?? [];
 
   // Identify which image URLs belong to our R2 bucket so we can clean up on failure
-  const r2Keys = images.map(extractR2Key).filter((k): k is string => k !== null);
+  const r2Keys = [
+    ...uploaded.map((u) => u.key),
+    ...images.map(extractR2Key).filter((k): k is string => k !== null),
+  ];
 
   try {
     const product = await productService.createProduct(body);

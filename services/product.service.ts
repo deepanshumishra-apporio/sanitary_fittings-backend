@@ -3,10 +3,16 @@ import { AppError } from "../lib/errors";
 import type { CreateProductDto, UpdateProductDto, ProductQuery } from "../validations/product.validation";
 
 const categorySelect = { id: true, name: true };
-const productInclude = { category: { select: categorySelect } };
+const subCategorySelect = { id: true, name: true, categoryId: true };
+const companySelect = { id: true, name: true };
+const productInclude = {
+  category: { select: categorySelect },
+  subCategory: { select: subCategorySelect },
+  company: { select: companySelect },
+};
 
 export async function listProducts(query: ProductQuery) {
-  const { page, limit, search, category, minPrice, maxPrice, sortBy, order } = query;
+  const { page, limit, search, category, subCategory, company, minPrice, maxPrice, sortBy, order } = query;
   const skip = (page - 1) * limit;
 
   const where = {
@@ -17,6 +23,8 @@ export async function listProducts(query: ProductQuery) {
       ],
     }),
     ...(category && { categoryId: category }),
+    ...(subCategory && { subCategoryId: subCategory }),
+    ...(company && { companyId: company }),
     ...((minPrice !== undefined || maxPrice !== undefined) && {
       price: {
         ...(minPrice !== undefined && { gte: minPrice }),
@@ -86,6 +94,25 @@ export async function createProduct(dto: CreateProductDto) {
   });
   if (!category) throw new AppError(400, "Category not found");
 
+  if (dto.subCategoryId !== undefined && dto.subCategoryId !== null) {
+    const subCategory = await prisma.subCategory.findUnique({
+      where: { id: dto.subCategoryId },
+      select: { id: true, categoryId: true },
+    });
+    if (!subCategory) throw new AppError(400, "Sub category not found");
+    if (subCategory.categoryId !== dto.categoryId) {
+      throw new AppError(400, "Sub category does not belong to the selected category");
+    }
+  }
+
+  if (dto.companyId !== undefined && dto.companyId !== null) {
+    const company = await prisma.company.findUnique({
+      where: { id: dto.companyId },
+      select: { id: true },
+    });
+    if (!company) throw new AppError(400, "Company not found");
+  }
+
   if (vendors.length > 0) {
     const vendorIds = vendors.map((v) => v.vendorId);
 
@@ -145,6 +172,31 @@ export async function updateProduct(id: string, dto: UpdateProductDto) {
       select: { id: true },
     });
     if (!category) throw new AppError(400, "Category not found");
+  }
+
+  if (dto.subCategoryId !== undefined && dto.subCategoryId !== null) {
+    const subCategory = await prisma.subCategory.findUnique({
+      where: { id: dto.subCategoryId },
+      select: { id: true, categoryId: true },
+    });
+    if (!subCategory) throw new AppError(400, "Sub category not found");
+
+    const effectiveCategoryId = dto.categoryId ?? (await prisma.product.findUnique({
+      where: { id },
+      select: { categoryId: true },
+    }))?.categoryId;
+
+    if (!effectiveCategoryId || subCategory.categoryId !== effectiveCategoryId) {
+      throw new AppError(400, "Sub category does not belong to the selected category");
+    }
+  }
+
+  if (dto.companyId !== undefined && dto.companyId !== null) {
+    const company = await prisma.company.findUnique({
+      where: { id: dto.companyId },
+      select: { id: true },
+    });
+    if (!company) throw new AppError(400, "Company not found");
   }
 
   return prisma.product.update({
