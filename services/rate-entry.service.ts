@@ -20,6 +20,28 @@ const rateEntryInclude = {
   vendor: { select: { id: true, name: true, email: true, phone: true } },
 };
 
+const productVendorRateInclude = {
+  product: {
+    select: {
+      id: true,
+      name: true,
+      categoryId: true,
+      subCategoryId: true,
+      companyId: true,
+      category: { select: { id: true, name: true } },
+      subCategory: { select: { id: true, name: true } },
+      company: { select: { id: true, name: true } },
+    },
+  },
+  vendor: { select: { id: true, name: true, email: true, phone: true } },
+};
+
+const productRateInclude = {
+  category: { select: { id: true, name: true } },
+  subCategory: { select: { id: true, name: true } },
+  company: { select: { id: true, name: true } },
+};
+
 function normaliseDateRange(dateFrom?: Date, dateTo?: Date) {
   if (!dateFrom && !dateTo) return undefined;
 
@@ -62,27 +84,159 @@ export async function listRateEntries(query: RateEntryQueryDto) {
 
   const skip = (page - 1) * limit;
 
-  const [rows, allLatestRows, totalHistory] = await Promise.all([
+  if (latestOnly) {
+    const companyVendorWhere = {
+      ...(companyId && { companyId }),
+      ...(vendorId && { vendorId }),
+    };
+    const companyVendorLinks = await prisma.companyVendor.findMany({
+      where: companyVendorWhere,
+      include: { company: { select: { id: true, name: true } } },
+    });
+    const companyByVendorId = new Map(companyVendorLinks.map((link) => [link.vendorId, link.company]));
+    const vendorIdsForCompany = companyId ? companyVendorLinks.map((link) => link.vendorId) : undefined;
+    const productVendorWhere = {
+      ...(vendorId && { vendorId }),
+      ...(vendorIdsForCompany && { vendorId: { in: vendorIdsForCompany } }),
+      product: {
+        ...(companyId && { OR: [{ companyId }, { companyId: null }] }),
+        ...(categoryId && { categoryId }),
+        ...(subCategoryId && { subCategoryId }),
+        ...(search && {
+          OR: [
+            { name: { contains: search, mode: "insensitive" as const } },
+            { description: { contains: search, mode: "insensitive" as const } },
+          ],
+        }),
+      },
+    };
+
+    const productWhere = {
+      ...(companyId && { companyId }),
+      ...(categoryId && { categoryId }),
+      ...(subCategoryId && { subCategoryId }),
+      ...(search && {
+        OR: [
+          { name: { contains: search, mode: "insensitive" as const } },
+          { description: { contains: search, mode: "insensitive" as const } },
+        ],
+      }),
+      vendors: { none: {} },
+    };
+
+    const [productVendorTotal, productFallbackTotal, latestRows] = await Promise.all([
+      prisma.productVendor.count({ where: productVendorWhere }),
+      vendorId ? Promise.resolve(0) : prisma.product.count({ where: productWhere }),
+      prisma.rateEntry.findMany({
+        where,
+        distinct: ["productId", "vendorId", "companyId"],
+        include: rateEntryInclude,
+        orderBy: [{ effectiveDate: "desc" }, { createdAt: "desc" }],
+      }),
+    ]);
+
+    const remainingAfterVendors = Math.max(0, limit - Math.max(0, productVendorTotal - skip));
+    const productVendorTake = skip >= productVendorTotal ? 0 : Math.min(limit, productVendorTotal - skip);
+    const productFallbackSkip = Math.max(0, skip - productVendorTotal);
+
+    const [productVendors, fallbackProducts] = await Promise.all([
+      prisma.productVendor.findMany({
+        where: productVendorWhere,
+        include: productVendorRateInclude,
+        orderBy: [{ product: { name: "asc" } }, { vendor: { name: "asc" } }],
+        skip: Math.min(skip, productVendorTotal),
+        take: productVendorTake,
+      }),
+      remainingAfterVendors > 0 && !vendorId
+        ? prisma.product.findMany({
+            where: productWhere,
+            include: productRateInclude,
+            orderBy: { name: "asc" },
+            skip: productFallbackSkip,
+            take: remainingAfterVendors,
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const total = productVendorTotal + productFallbackTotal;
+
+    const fallbackProductRows = fallbackProducts.map((product) => {
+      const company = product.company ?? { id: "unassigned", name: "Unassigned" };
+      return {
+        billNo: null,
+        company,
+        companyId: company.id,
+        effectiveDate: product.updatedAt,
+        id: `product-price-${product.id}`,
+        notes: null,
+        previousRate: null,
+        product: {
+          category: product.category,
+          categoryId: product.categoryId,
+          company: product.company,
+          companyId: product.companyId,
+          id: product.id,
+          name: product.name,
+          subCategory: product.subCategory,
+          subCategoryId: product.subCategoryId,
+        },
+        productId: product.id,
+        rate: product.price,
+        vendor: { email: null, id: "product-price", name: "Product Price", phone: null },
+        vendorId: "product-price",
+      };
+    });
+
+    const latestByPair = new Map(
+      latestRows.map((entry) => [`${entry.productId}:${entry.vendorId}:${entry.companyId}`, entry])
+    );
+
+    const data = productVendors
+      .map((entry) => {
+        const productCompany = entry.product.company ?? companyByVendorId.get(entry.vendorId) ?? { id: "unassigned", name: "Unassigned" };
+        const fallbackCompanyId = productCompany.id;
+        const latest = latestByPair.get(`${entry.productId}:${entry.vendorId}:${fallbackCompanyId}`);
+        return {
+          billNo: latest?.billNo ?? null,
+          company: latest?.company ?? productCompany,
+          companyId: latest?.companyId ?? fallbackCompanyId,
+          effectiveDate: latest?.effectiveDate ?? entry.updatedAt,
+          id: latest?.id ?? `product-vendor-${entry.id}`,
+          notes: latest?.notes ?? null,
+          previousRate: latest?.previousRate ?? null,
+          product: latest?.product ?? entry.product,
+          productId: entry.productId,
+          rate: entry.price,
+          vendor: latest?.vendor ?? entry.vendor,
+          vendorId: entry.vendorId,
+        };
+      })
+      .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+    data.push(...fallbackProductRows);
+
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        limit,
+        pages: Math.max(1, Math.ceil(total / limit)),
+      },
+    };
+  }
+
+  const [rows, totalHistory] = await Promise.all([
     prisma.rateEntry.findMany({
       where,
       include: rateEntryInclude,
       orderBy: [{ effectiveDate: "desc" }, { createdAt: "desc" }],
-      ...(latestOnly && { distinct: ["productId", "vendorId", "companyId"] }),
       skip,
       take: limit,
     }),
-    latestOnly
-      ? prisma.rateEntry.findMany({
-          where,
-          distinct: ["productId", "vendorId", "companyId"],
-          select: { id: true },
-          orderBy: [{ effectiveDate: "desc" }, { createdAt: "desc" }],
-        })
-      : Promise.resolve([]),
-    latestOnly ? Promise.resolve(0) : prisma.rateEntry.count({ where }),
+    prisma.rateEntry.count({ where }),
   ]);
 
-  const total = latestOnly ? allLatestRows.length : totalHistory;
+  const total = totalHistory;
 
   return {
     data: rows,
