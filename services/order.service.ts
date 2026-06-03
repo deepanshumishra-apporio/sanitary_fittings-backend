@@ -30,6 +30,15 @@ const ORDER_TRANSACTION_OPTIONS = {
   timeout: 15_000,
 } as const;
 
+function normalizeDiscountPercent(value: number) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(Math.max(value, 0), 100);
+}
+
+function discountAmount(price: number, discountPercent: number) {
+  return price * (normalizeDiscountPercent(discountPercent) / 100);
+}
+
 async function applyOrderStockMovement(
   tx: Prisma.TransactionClient,
   input: {
@@ -144,11 +153,11 @@ export async function createOrder(userId: string, dto: CreateOrderDto) {
     productId: item.productId,
     quantity: item.quantity,
     price: productMap.get(item.productId)!.price,
-    discount: Math.min(productMap.get(item.productId)!.discount, productMap.get(item.productId)!.price),
+    discount: normalizeDiscountPercent(productMap.get(item.productId)!.discount),
   }));
 
   const subtotal = orderItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
-  const discount = orderItems.reduce((sum, i) => sum + i.discount * i.quantity, 0);
+  const discount = orderItems.reduce((sum, i) => sum + discountAmount(i.price, i.discount) * i.quantity, 0);
   const totalPrice = Math.max(0, subtotal - discount);
 
   return prisma.$transaction(async (tx) => {
@@ -332,12 +341,12 @@ export async function createManualOrder(dto: ManualOrderDto, createdById?: strin
     productId: item.productId,
     quantity: item.quantity,
     price: productMap.get(item.productId)!.price,
-    discount: Math.min(productMap.get(item.productId)!.discount, productMap.get(item.productId)!.price),
+    discount: normalizeDiscountPercent(productMap.get(item.productId)!.discount),
   }));
 
   const subtotal = orderItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
-  const discountAmount = orderItems.reduce((sum, i) => sum + i.discount * i.quantity, 0);
-  const totalPrice = Math.max(0, subtotal - discountAmount);
+  const totalDiscountAmount = orderItems.reduce((sum, i) => sum + discountAmount(i.price, i.discount) * i.quantity, 0);
+  const totalPrice = Math.max(0, subtotal - totalDiscountAmount);
 
   // 4. Deduct stock and create order in a single transaction
   return prisma.$transaction(async (tx) => {
@@ -346,7 +355,7 @@ export async function createManualOrder(dto: ManualOrderDto, createdById?: strin
         userId: targetUserId,
         ...(address && { addressId: address.id }),
         totalPrice,
-        discount: discountAmount,
+        discount: totalDiscountAmount,
         status: "PLACED",
         items: { create: orderItems },
         payment: {
