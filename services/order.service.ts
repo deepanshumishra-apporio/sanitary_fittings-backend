@@ -25,6 +25,11 @@ const orderInclude = {
   },
 };
 
+const ORDER_TRANSACTION_OPTIONS = {
+  maxWait: 10_000,
+  timeout: 15_000,
+} as const;
+
 async function applyOrderStockMovement(
   tx: Prisma.TransactionClient,
   input: {
@@ -175,8 +180,8 @@ export async function createOrder(userId: string, dto: CreateOrderDto) {
       });
     }
 
-    return tx.order.findUniqueOrThrow({ where: { id: order.id }, include: orderInclude });
-  });
+    return order;
+  }, ORDER_TRANSACTION_OPTIONS);
 }
 
 export async function updateOrderStatus(orderId: string, dto: UpdateOrderStatusDto, updatedById?: string) {
@@ -215,7 +220,7 @@ export async function updateOrderStatus(orderId: string, dto: UpdateOrderStatusD
         data: { status: "CANCELLED" },
         include: orderInclude,
       });
-    });
+    }, ORDER_TRANSACTION_OPTIONS);
   }
 
   return prisma.order.update({ where: { id: orderId }, data: { status: dto.status }, include: orderInclude });
@@ -368,14 +373,8 @@ export async function createManualOrder(dto: ManualOrderDto, createdById?: strin
       });
     }
 
-    return tx.order.findUniqueOrThrow({
-      where: { id: order.id },
-      include: {
-        ...orderInclude,
-        user: { select: { id: true, name: true, email: true } },
-      },
-    });
-  });
+    return order;
+  }, ORDER_TRANSACTION_OPTIONS);
 }
 
 export async function cancelOrder(orderId: string, userId: string) {
@@ -397,5 +396,5 @@ export async function cancelOrder(orderId: string, userId: string) {
       });
     }
     await tx.order.update({ where: { id: orderId }, data: { status: "CANCELLED" } });
-  });
+  }, ORDER_TRANSACTION_OPTIONS);
 }
