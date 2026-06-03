@@ -29,6 +29,15 @@ enum PaymentStatus {
   PAID
 }
 
+enum VendorStockEntryType {
+  INITIAL
+  PURCHASE_BILL
+  MANUAL_UPDATE
+  ORDER_SOLD
+  ORDER_CANCELLED
+  ADJUSTMENT
+}
+
 model User {
   id            String         @id @default(uuid())
   email         String?        @unique
@@ -44,6 +53,8 @@ model User {
   orders        Order[]
   payments      Payment[]
   refreshTokens RefreshToken[]
+  vendorStockBills VendorStockBill[]
+  vendorStockEntries VendorStockEntry[]
 }
 
 model RefreshToken {
@@ -90,6 +101,8 @@ model Company {
   products    Product[]
   vendors     CompanyVendor[]
   rateEntries RateEntry[]
+  stockBills   VendorStockBill[]
+  stockEntries VendorStockEntry[]
 }
 
 model Vendor {
@@ -104,6 +117,8 @@ model Vendor {
   products    ProductVendor[]
   companies   CompanyVendor[]
   rateEntries RateEntry[]
+  stockBills   VendorStockBill[]
+  stockEntries VendorStockEntry[]
 }
 
 model CompanyVendor {
@@ -158,6 +173,59 @@ model Product {
   orderItems  OrderItem[]
   vendors     ProductVendor[]
   rateEntries RateEntry[]
+  stockEntries VendorStockEntry[]
+}
+
+model VendorStockBill {
+  id          String    @id @default(uuid())
+  vendorId    String
+  companyId   String?
+  billNo      String
+  billDate    DateTime
+  billAmount  Float?
+  notes       String?
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  vendor      Vendor    @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  company     Company?  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  createdBy   User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  entries     VendorStockEntry[]
+
+  @@index([vendorId, billDate])
+  @@index([companyId, billDate])
+  @@unique([vendorId, billNo, billDate])
+}
+
+model VendorStockEntry {
+  id          String               @id @default(uuid())
+  billId      String?
+  productId   String
+  vendorId    String
+  companyId   String?
+  orderId     String?
+  type        VendorStockEntryType
+  oldStock    Int
+  changeQty   Int
+  newStock    Int
+  previousRate Float?
+  rate        Float?
+  notes       String?
+  updatedById String?
+  createdAt   DateTime             @default(now())
+
+  bill        VendorStockBill?      @relation(fields: [billId], references: [id], onDelete: SetNull)
+  product     Product               @relation(fields: [productId], references: [id], onDelete: Restrict)
+  vendor      Vendor                @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  company     Company?              @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  order       Order?                @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  updatedBy   User?                 @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([productId, vendorId, createdAt])
+  @@index([vendorId, createdAt])
+  @@index([billId])
+  @@index([orderId])
 }
 
 model RateEntry {
@@ -196,6 +264,7 @@ model Order {
   address    Address?    @relation(fields: [addressId], references: [id])
   items      OrderItem[]
   payment    Payment?
+  stockEntries VendorStockEntry[]
 }
 
 model OrderItem {

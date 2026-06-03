@@ -45,7 +45,7 @@ export const getProductVendors = handle(async (req, res) => {
 
 export const addProductVendor = handle(async (req, res) => {
   const body = addProductVendorSchema.parse(req.body);
-  const entry = await vendorService.addProductVendor(req.params.productId as string, body);
+  const entry = await vendorService.addProductVendor(req.params.productId as string, body, req.user?.userId);
   res.status(201).json({ success: true, data: entry });
 });
 
@@ -59,7 +59,8 @@ export const updateProductVendor = handle(async (req, res) => {
   const entry = await vendorService.updateProductVendor(
     req.params.productId as string,
     req.params.vendorId as string,
-    body
+    body,
+    req.user?.userId
   );
   res.json({ success: true, data: entry });
 });

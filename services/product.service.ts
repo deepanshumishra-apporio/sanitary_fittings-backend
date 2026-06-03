@@ -2,6 +2,7 @@ import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/errors";
 import type { CreateProductDto, UpdateProductDto, ProductQuery } from "../validations/product.validation";
 import { ensureCompanyVendorLinks } from "./company-vendor-link.service";
+import { recordVendorStockMovement } from "./vendor-stock.service";
 
 const categorySelect = { id: true, name: true };
 const subCategorySelect = { id: true, name: true, categoryId: true };
@@ -85,7 +86,7 @@ export async function listByCategory(categoryId: string, page: number, limit: nu
   };
 }
 
-export async function createProduct(dto: CreateProductDto) {
+export async function createProduct(dto: CreateProductDto, createdById?: string) {
   const { vendors = [], ...productData } = dto;
 
   // ── Pre-flight validation (fast-fail before opening a transaction) ────────
@@ -147,18 +148,51 @@ export async function createProduct(dto: CreateProductDto) {
     });
 
     if (vendors.length > 0) {
-      await tx.productVendor.createMany({
-        data: vendors.map((v, i) => ({
-          productId: product.id,
-          vendorId: v.vendorId,
-          price: v.price,
-          stock: v.stock,
-          sku: v.sku,
-          isActive: i === 0,
-        })),
-      });
-
       await ensureCompanyVendorLinks(tx, product.companyId, vendors.map((v) => v.vendorId));
+
+      for (let i = 0; i < vendors.length; i += 1) {
+        const vendor = vendors[i]!;
+        const bill =
+          vendor.billNo && vendor.billDate
+            ? await tx.vendorStockBill.upsert({
+                where: {
+                  vendorId_billNo_billDate: {
+                    billDate: vendor.billDate,
+                    billNo: vendor.billNo,
+                    vendorId: vendor.vendorId,
+                  },
+                },
+                create: {
+                  billDate: vendor.billDate,
+                  billNo: vendor.billNo,
+                  companyId: product.companyId,
+                  createdById,
+                  vendorId: vendor.vendorId,
+                },
+                update: {},
+              })
+            : null;
+        await tx.productVendor.create({
+          data: {
+            productId: product.id,
+            vendorId: vendor.vendorId,
+            price: vendor.price,
+            stock: 0,
+            sku: vendor.sku,
+            isActive: i === 0,
+          },
+        });
+        await recordVendorStockMovement(tx, {
+          billId: bill?.id,
+          changeQty: vendor.stock,
+          companyId: product.companyId,
+          productId: product.id,
+          rate: vendor.price,
+          type: "INITIAL",
+          updatedById: createdById,
+          vendorId: vendor.vendorId,
+        });
+      }
     }
 
     return product;

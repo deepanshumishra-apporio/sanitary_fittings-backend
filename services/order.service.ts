@@ -1,5 +1,7 @@
+import type { Prisma } from "../generated/prisma/client";
 import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/errors";
+import { recordVendorStockMovement } from "./vendor-stock.service";
 import type {
   CreateOrderDto,
   UpdateOrderStatusDto,
@@ -22,6 +24,40 @@ const orderInclude = {
     },
   },
 };
+
+async function applyOrderStockMovement(
+  tx: Prisma.TransactionClient,
+  input: {
+    changeQty: number;
+    orderId: string;
+    productId: string;
+    type: "ORDER_SOLD" | "ORDER_CANCELLED";
+    updatedById?: string;
+  }
+) {
+  const activeVendor = await tx.productVendor.findFirst({
+    where: { productId: input.productId, isActive: true },
+    select: { vendorId: true, product: { select: { companyId: true } } },
+  });
+
+  if (!activeVendor) {
+    await tx.product.update({
+      where: { id: input.productId },
+      data: { stock: { increment: input.changeQty } },
+    });
+    return;
+  }
+
+  await recordVendorStockMovement(tx, {
+    changeQty: input.changeQty,
+    companyId: activeVendor.product.companyId,
+    orderId: input.orderId,
+    productId: input.productId,
+    type: input.type,
+    updatedById: input.updatedById,
+    vendorId: activeVendor.vendorId,
+  });
+}
 
 export async function getMyOrders(userId: string, page: number, limit: number) {
   const skip = (page - 1) * limit;
@@ -111,19 +147,7 @@ export async function createOrder(userId: string, dto: CreateOrderDto) {
   const totalPrice = Math.max(0, subtotal - discount);
 
   return prisma.$transaction(async (tx) => {
-    for (const item of dto.items) {
-      // Deduct product stock
-      await tx.product.update({
-        where: { id: item.productId },
-        data: { stock: { decrement: item.quantity } },
-      });
-      // Deduct active vendor stock
-      await tx.productVendor.updateMany({
-        where: { productId: item.productId, isActive: true },
-        data: { stock: { decrement: item.quantity } },
-      });
-    }
-    return tx.order.create({
+    const order = await tx.order.create({
       data: {
         userId,
         addressId: dto.addressId,
@@ -140,10 +164,22 @@ export async function createOrder(userId: string, dto: CreateOrderDto) {
       },
       include: orderInclude,
     });
+
+    for (const item of dto.items) {
+      await applyOrderStockMovement(tx, {
+        changeQty: -item.quantity,
+        orderId: order.id,
+        productId: item.productId,
+        type: "ORDER_SOLD",
+        updatedById: userId,
+      });
+    }
+
+    return tx.order.findUniqueOrThrow({ where: { id: order.id }, include: orderInclude });
   });
 }
 
-export async function updateOrderStatus(orderId: string, dto: UpdateOrderStatusDto) {
+export async function updateOrderStatus(orderId: string, dto: UpdateOrderStatusDto, updatedById?: string) {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
     include: { items: true },
@@ -165,13 +201,12 @@ export async function updateOrderStatus(orderId: string, dto: UpdateOrderStatusD
   if (dto.status === "CANCELLED") {
     return prisma.$transaction(async (tx) => {
       for (const item of order.items) {
-        await tx.product.update({
-          where: { id: item.productId },
-          data: { stock: { increment: item.quantity } },
-        });
-        await tx.productVendor.updateMany({
-          where: { productId: item.productId, isActive: true },
-          data: { stock: { increment: item.quantity } },
+        await applyOrderStockMovement(tx, {
+          changeQty: item.quantity,
+          orderId,
+          productId: item.productId,
+          type: "ORDER_CANCELLED",
+          updatedById,
         });
       }
 
@@ -215,7 +250,7 @@ export async function updateOrderPaymentStatus(orderId: string, dto: UpdatePayme
   });
 }
 
-export async function createManualOrder(dto: ManualOrderDto) {
+export async function createManualOrder(dto: ManualOrderDto, createdById?: string) {
   // 1. Resolve or create user
   let targetUserId: string;
 
@@ -301,17 +336,7 @@ export async function createManualOrder(dto: ManualOrderDto) {
 
   // 4. Deduct stock and create order in a single transaction
   return prisma.$transaction(async (tx) => {
-    for (const item of dto.items) {
-      await tx.product.update({
-        where: { id: item.productId },
-        data: { stock: { decrement: item.quantity } },
-      });
-      await tx.productVendor.updateMany({
-        where: { productId: item.productId, isActive: true },
-        data: { stock: { decrement: item.quantity } },
-      });
-    }
-    return tx.order.create({
+    const order = await tx.order.create({
       data: {
         userId: targetUserId,
         ...(address && { addressId: address.id }),
@@ -332,6 +357,24 @@ export async function createManualOrder(dto: ManualOrderDto) {
         user: { select: { id: true, name: true, email: true } },
       },
     });
+
+    for (const item of dto.items) {
+      await applyOrderStockMovement(tx, {
+        changeQty: -item.quantity,
+        orderId: order.id,
+        productId: item.productId,
+        type: "ORDER_SOLD",
+        updatedById: createdById,
+      });
+    }
+
+    return tx.order.findUniqueOrThrow({
+      where: { id: order.id },
+      include: {
+        ...orderInclude,
+        user: { select: { id: true, name: true, email: true } },
+      },
+    });
   });
 }
 
@@ -345,15 +388,12 @@ export async function cancelOrder(orderId: string, userId: string) {
 
   await prisma.$transaction(async (tx) => {
     for (const item of order.items) {
-      // Restore product stock
-      await tx.product.update({
-        where: { id: item.productId },
-        data: { stock: { increment: item.quantity } },
-      });
-      // Restore active vendor stock
-      await tx.productVendor.updateMany({
-        where: { productId: item.productId, isActive: true },
-        data: { stock: { increment: item.quantity } },
+      await applyOrderStockMovement(tx, {
+        changeQty: item.quantity,
+        orderId,
+        productId: item.productId,
+        type: "ORDER_CANCELLED",
+        updatedById: userId,
       });
     }
     await tx.order.update({ where: { id: orderId }, data: { status: "CANCELLED" } });

@@ -7,6 +7,7 @@ import orderRoutes from "./order.route";
 import productRoutes from "./product.route";
 import rateEntryRoutes from "./rate-entry.route";
 import subCategoryRoutes from "./subcategory.route";
+import vendorStockRoutes from "./vendor-stock.route";
 import vendorRoutes from "./vendor.route";
 
 const router = Router();
@@ -16,6 +17,7 @@ router.use("/category", categoryRoutes);
 router.use("/subcategory", subCategoryRoutes);
 router.use("/company", companyRoutes);
 router.use("/rate-entry", rateEntryRoutes);
+router.use("/vendor-stock", vendorStockRoutes);
 router.use("/order", orderRoutes);
 router.use("/product", productRoutes);
 router.use("/vendor", vendorRoutes);

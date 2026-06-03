@@ -42,7 +42,7 @@ export const createOrder = handle(async (req, res) => {
 
 export const updateOrderStatus = handle(async (req, res) => {
   const body = updateOrderStatusSchema.parse(req.body);
-  const order = await orderService.updateOrderStatus(req.params.id as string, body);
+  const order = await orderService.updateOrderStatus(req.params.id as string, body, req.user?.userId);
   res.json({ success: true, data: order });
 });
 
@@ -59,6 +59,6 @@ export const cancelOrder = handle(async (req, res) => {
 
 export const createManualOrder = handle(async (req, res) => {
   const body = manualOrderSchema.parse(req.body);
-  const order = await orderService.createManualOrder(body);
+  const order = await orderService.createManualOrder(body, req.user?.userId);
   res.status(201).json({ success: true, data: order });
 });

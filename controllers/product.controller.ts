@@ -113,7 +113,7 @@ export const createProduct = handle(async (req, res) => {
   ];
 
   try {
-    const product = await productService.createProduct(body);
+    const product = await productService.createProduct(body, req.user?.userId);
     res.status(201).json({ success: true, data: product });
   } catch (err) {
     // DB write failed — remove the already-uploaded R2 objects to avoid orphans

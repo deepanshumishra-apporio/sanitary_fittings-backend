@@ -14,6 +14,8 @@ export const addProductVendorSchema = z.object({
   price: z.coerce.number().positive(),
   stock: z.coerce.number().int().min(0),
   sku: z.string().trim().max(100).optional(),
+  billNo: z.string().trim().max(100).optional(),
+  billDate: z.coerce.date().optional(),
 });
 
 export const updateProductVendorSchema = z.object({

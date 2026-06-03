@@ -1,6 +1,7 @@
 import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/errors";
 import { ensureCompanyVendorLink } from "./company-vendor-link.service";
+import { recordVendorStockMovement } from "./vendor-stock.service";
 import type {
   CreateVendorDto,
   UpdateVendorDto,
@@ -79,7 +80,7 @@ export async function getProductVendors(productId: string) {
   });
 }
 
-export async function addProductVendor(productId: string, dto: AddProductVendorDto) {
+export async function addProductVendor(productId: string, dto: AddProductVendorDto, updatedById?: string) {
   const [product, vendor] = await Promise.all([
     prisma.product.findUnique({ where: { id: productId }, select: { id: true, companyId: true } }),
     prisma.vendor.findUnique({ where: { id: dto.vendorId }, select: { id: true } }),
@@ -97,16 +98,48 @@ export async function addProductVendor(productId: string, dto: AddProductVendorD
     const count = await tx.productVendor.count({ where: { productId } });
     const isFirst = count === 0;
 
-    const entry = await tx.productVendor.create({
-      data: { productId, vendorId: dto.vendorId, price: dto.price, stock: dto.stock, sku: dto.sku, isActive: isFirst },
+    await tx.productVendor.create({
+      data: { productId, vendorId: dto.vendorId, price: dto.price, stock: 0, sku: dto.sku, isActive: isFirst },
       include: { vendor: { select: vendorSelect } },
     });
     await ensureCompanyVendorLink(tx, product.companyId, dto.vendorId);
 
-    if (isFirst) {
-      await tx.product.update({ where: { id: productId }, data: { stock: dto.stock, price: dto.price } });
-    }
-    return entry;
+    const bill =
+      dto.billNo && dto.billDate
+        ? await tx.vendorStockBill.upsert({
+            where: {
+              vendorId_billNo_billDate: {
+                billDate: dto.billDate,
+                billNo: dto.billNo,
+                vendorId: dto.vendorId,
+              },
+            },
+            create: {
+              billDate: dto.billDate,
+              billNo: dto.billNo,
+              companyId: product.companyId,
+              createdById: updatedById,
+              vendorId: dto.vendorId,
+            },
+            update: {},
+          })
+        : null;
+
+    await recordVendorStockMovement(tx, {
+      billId: bill?.id,
+      changeQty: dto.stock,
+      companyId: product.companyId,
+      productId,
+      rate: dto.price,
+      type: "INITIAL",
+      updatedById,
+      vendorId: dto.vendorId,
+    });
+
+    return tx.productVendor.findUniqueOrThrow({
+      where: { productId_vendorId: { productId, vendorId: dto.vendorId } },
+      include: { vendor: { select: vendorSelect } },
+    });
   });
 }
 
@@ -129,25 +162,47 @@ export async function setActiveVendor(productId: string, vendorId: string) {
   });
 }
 
-export async function updateProductVendor(productId: string, vendorId: string, dto: UpdateProductVendorDto) {
+export async function updateProductVendor(productId: string, vendorId: string, dto: UpdateProductVendorDto, updatedById?: string) {
   return prisma.$transaction(async (tx) => {
     const entry = await tx.productVendor.findUnique({
       where: { productId_vendorId: { productId, vendorId } },
-      select: { isActive: true },
+      select: { isActive: true, price: true, stock: true, product: { select: { companyId: true } } },
     });
     if (!entry) throw new AppError(404, "Vendor not linked to this product");
 
-    const updated = await tx.productVendor.update({
+    if (dto.stock !== undefined) {
+      await tx.productVendor.update({
+        where: { productId_vendorId: { productId, vendorId } },
+        data: { sku: dto.sku },
+      });
+      await recordVendorStockMovement(tx, {
+        changeQty: dto.stock - entry.stock,
+        companyId: entry.product.companyId,
+        notes: "Manual stock update",
+        productId,
+        rate: dto.price ?? entry.price,
+        type: "ADJUSTMENT",
+        updatedById,
+        vendorId,
+      });
+    } else {
+      await tx.productVendor.update({
+        where: { productId_vendorId: { productId, vendorId } },
+        data: dto,
+      });
+    }
+
+    const updated = await tx.productVendor.findUniqueOrThrow({
       where: { productId_vendorId: { productId, vendorId } },
-      data: dto,
       include: { vendor: { select: vendorSelect } },
     });
+
     if (entry.isActive) {
       await tx.product.update({
         where: { id: productId },
         data: {
-          ...(dto.stock !== undefined && { stock: dto.stock }),
-          ...(dto.price !== undefined && { price: dto.price }),
+          stock: updated.stock,
+          price: updated.price,
         },
       });
     }
