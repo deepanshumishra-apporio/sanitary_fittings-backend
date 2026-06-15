@@ -12,6 +12,19 @@ export const createOrderSchema = z.object({
     .min(1),
 });
 
+export const orderListQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  status: z.enum(["PLACED", "CANCELLED"]).optional(),
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
+});
+
+export const analyticsQuerySchema = z.object({
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
+});
+
 export const updateOrderStatusSchema = z.object({
   status: z.enum(["PLACED", "CANCELLED"]),
 });
@@ -25,7 +38,7 @@ export const manualOrderSchema = z
     userId: z.uuid().optional(),
     customerName: z.string().trim().min(1).max(100).optional(),
     customerEmail: z.string().trim().toLowerCase().pipe(z.email()).optional(),
-    customerPhone: z.string().trim().max(20).optional(),
+    customerPhone: z.string().trim().max(30).optional(),
     address: z.object({
       name: z.string().trim().min(1, "Recipient name is required"),
       phone: z.string().trim().max(20).optional(),

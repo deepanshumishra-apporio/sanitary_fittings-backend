@@ -4,6 +4,8 @@ import {
   updateOrderStatusSchema,
   updatePaymentStatusSchema,
   manualOrderSchema,
+  orderListQuerySchema,
+  analyticsQuerySchema,
 } from "../validations/order.validation";
 import * as orderService from "../services/order.service";
 
@@ -20,17 +22,15 @@ export const getMyOrderById = handle(async (req, res) => {
 });
 
 export const getOrders = handle(async (req, res) => {
-  const page = Math.max(1, Number(req.query["page"]) || 1);
-  const limit = Math.min(100, Math.max(1, Number(req.query["limit"]) || 20));
-  const status = req.query["status"] as string | undefined;
-  const from = req.query["from"] ? new Date(req.query["from"] as string) : undefined;
-  const to = req.query["to"] ? new Date(req.query["to"] as string) : undefined;
-  const result = await orderService.getAllOrders(page, limit, status, from, to);
+  const { page, limit, status, from, to } = orderListQuerySchema.parse(req.query);
+  const dealerId = req.user?.role === "DEALER" ? req.user.userId : undefined;
+  const result = await orderService.getAllOrders(page, limit, status, from, to, dealerId);
   res.json({ success: true, ...result });
 });
 
 export const getOrderById = handle(async (req, res) => {
-  const order = await orderService.getOrderById(req.params.id as string);
+  const dealerId = req.user?.role === "DEALER" ? req.user.userId : undefined;
+  const order = await orderService.getOrderById(req.params.id as string, dealerId);
   res.json({ success: true, data: order });
 });
 
@@ -57,8 +57,23 @@ export const cancelOrder = handle(async (req, res) => {
   res.json({ success: true, message: "Order cancelled successfully" });
 });
 
+export const getPlacerAnalytics = handle(async (req, res) => {
+  const { from, to } = analyticsQuerySchema.parse(req.query);
+  const data = await orderService.getPlacerAnalytics({ from, to });
+  res.json({ success: true, data });
+});
+
+export const getMyPlacerAnalytics = handle(async (req, res) => {
+  const { from, to } = analyticsQuerySchema.parse(req.query);
+  const data = await orderService.getPlacerAnalytics({ from, to, placedById: req.user!.userId });
+  res.json({ success: true, data: data[0] ?? null });
+});
+
 export const createManualOrder = handle(async (req, res) => {
   const body = manualOrderSchema.parse(req.body);
-  const order = await orderService.createManualOrder(body, req.user?.userId);
+  const order = await orderService.createManualOrder(
+    body,
+    req.user ? { userId: req.user.userId, role: req.user.role } : undefined
+  );
   res.status(201).json({ success: true, data: order });
 });

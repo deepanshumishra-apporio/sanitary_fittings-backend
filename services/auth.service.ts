@@ -88,14 +88,18 @@ export async function refreshAuth(incomingToken: string): Promise<AuthResult> {
     throw new AppError(401, "Invalid or expired refresh token");
   }
 
-  const stored = await prisma.refreshToken.findUnique({ where: { jti: payload.jti } });
+  // Atomically claim (delete) the token. deleteMany acts as the lock: only one
+  // concurrent caller can match-and-delete a given jti, so racing refreshes
+  // (common when several 401s fire at once on a mobile client) can't both
+  // rotate, and a benign race no longer wipes every session — the loser simply
+  // gets a 401 for that one request instead of being logged out everywhere.
+  const claimed = await prisma.refreshToken.deleteMany({
+    where: { jti: payload.jti, userId: payload.sub, expiresAt: { gt: new Date() } },
+  });
 
-  if (!stored || stored.userId !== payload.sub || stored.expiresAt < new Date()) {
-    await prisma.refreshToken.deleteMany({ where: { userId: payload.sub } });
-    throw new AppError(401, "Refresh token reuse detected. Please sign in again.");
+  if (claimed.count === 0) {
+    throw new AppError(401, "Invalid or expired refresh token. Please sign in again.");
   }
-
-  await prisma.refreshToken.delete({ where: { jti: payload.jti } });
 
   const user = await prisma.user.findUnique({
     where: { id: payload.sub },
@@ -174,6 +178,14 @@ export async function getUserDetail(targetUserId: string) {
               status: true,
             },
           },
+          dealer: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true,
+            },
+          },
           items: {
             select: {
               id: true,
@@ -211,7 +223,7 @@ export async function adminSetPassword(targetUserId: string, newPassword: string
 
 export async function updateUserRole(
   targetUserId: string,
-  newRole: "CUSTOMER" | "SUBADMIN",
+  newRole: "CUSTOMER" | "SUBADMIN" | "DEALER",
   requestingUserId: string
 ) {
   if (targetUserId === requestingUserId) {
@@ -260,6 +272,31 @@ export async function createSubadmin(dto: {
   });
 }
 
+export async function createDealer(dto: {
+  email: string;
+  password: string;
+  name?: string;
+  phone?: string;
+}) {
+  const email = normalize(dto.email);
+  const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+  if (existing) throw new AppError(409, "An account with this email already exists");
+
+  const passwordHash = await bcrypt.hash(dto.password, 12);
+
+  return prisma.user.create({
+    data: {
+      email,
+      password: passwordHash,
+      name: dto.name ?? null,
+      phone: dto.phone ?? null,
+      role: "DEALER",
+      emailVerified: true,
+    },
+    select: { id: true, email: true, name: true, phone: true, role: true, createdAt: true },
+  });
+}
+
 export async function createCustomer(dto: {
   email: string;
   name?: string;
@@ -289,7 +326,7 @@ export async function getUsers(
 ) {
   const skip = (page - 1) * limit;
   const where = {
-    ...(role && { role: role as "CUSTOMER" | "ADMIN" | "SUBADMIN" }),
+    ...(role && { role: role as "CUSTOMER" | "ADMIN" | "SUBADMIN" | "DEALER" }),
     ...(search && {
       OR: [
         { name: { contains: search, mode: "insensitive" as const } },
@@ -375,6 +412,7 @@ export async function getAnalytics(from?: Date, to?: Date) {
         status: true,
         createdAt: true,
         user: { select: { name: true, email: true } },
+        dealer: { select: { name: true, email: true } },
       },
     }),
     prisma.order.findMany({

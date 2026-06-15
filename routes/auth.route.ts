@@ -15,6 +15,7 @@ import {
   getUsers,
   getAnalytics,
   createSubadmin,
+  createDealer,
   createCustomer,
 } from "../controllers/auth.controller";
 
@@ -37,6 +38,7 @@ router.get("/me", requireAuth, getMe);
 router.patch("/me", requireAuth, updateMe);
 
 router.post("/users/subadmin", requireAuth, requireRole("ADMIN"), createSubadmin);
+router.post("/users/dealer", requireAuth, requireRole("ADMIN"), createDealer);
 router.post("/users/customer", requireAuth, requireRole("ADMIN", "SUBADMIN"), createCustomer);
 router.patch("/users/:id/role", requireAuth, requireRole("ADMIN"), updateUserRole);
 router.patch("/users/:id/password", requireAuth, requireRole("ADMIN"), adminSetPassword);

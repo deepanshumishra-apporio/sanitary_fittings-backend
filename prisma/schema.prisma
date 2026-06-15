@@ -17,6 +17,7 @@ enum Role {
   CUSTOMER
   ADMIN
   SUBADMIN
+  DEALER
 }
 
 enum OrderStatus {
@@ -50,7 +51,9 @@ model User {
   updatedAt     DateTime       @updatedAt
 
   addresses     Address[]
-  orders        Order[]
+  orders        Order[]        @relation("CustomerOrders")
+  dealerOrders  Order[]        @relation("DealerOrders")
+  placedOrders  Order[]        @relation("PlacedOrders")
   payments      Payment[]
   refreshTokens RefreshToken[]
   vendorStockBills VendorStockBill[]
@@ -253,6 +256,9 @@ model RateEntry {
 model Order {
   id         String      @id @default(uuid())
   userId     String
+  dealerId   String?
+  placedById   String?
+  placedByRole Role?
   addressId  String?
   totalPrice Float
   discount   Float       @default(0)
@@ -260,11 +266,16 @@ model Order {
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
 
-  user       User        @relation(fields: [userId], references: [id])
+  user       User        @relation("CustomerOrders", fields: [userId], references: [id])
+  dealer     User?       @relation("DealerOrders", fields: [dealerId], references: [id], onDelete: SetNull)
+  placedBy   User?       @relation("PlacedOrders", fields: [placedById], references: [id], onDelete: SetNull)
   address    Address?    @relation(fields: [addressId], references: [id])
   items      OrderItem[]
   payment    Payment?
   stockEntries VendorStockEntry[]
+
+  @@index([dealerId, createdAt])
+  @@index([placedById, createdAt])
 }
 
 model OrderItem {

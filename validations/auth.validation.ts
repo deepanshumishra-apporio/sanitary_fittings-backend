@@ -13,6 +13,6 @@ export const signinSchema = z.object({
 });
 
 export const updateMeSchema = z.object({
-  name: z.string().min(2).max(50).optional(),
-  phone: z.string().min(7).max(20).optional(),
+  name: z.string().trim().min(1).max(100).optional(),
+  phone: z.string().trim().max(30).optional(),
 });

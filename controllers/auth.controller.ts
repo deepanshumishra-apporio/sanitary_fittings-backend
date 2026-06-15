@@ -15,7 +15,7 @@ const loginSchema = z.object({
 });
 
 const updateRoleSchema = z.object({
-  role: z.enum(["CUSTOMER", "SUBADMIN"]),
+  role: z.enum(["CUSTOMER", "SUBADMIN", "DEALER"]),
 });
 
 const updateMeSchema = z.object({
@@ -116,13 +116,20 @@ export const updateMe = handle(async (req, res) => {
 const createSubadminSchema = z.object({
   email: z.string().trim().toLowerCase().pipe(z.email()),
   password: z.string().min(8, "Password must be at least 8 characters").max(128),
-  name: z.string().trim().min(2).max(100).optional(),
+  name: z.string().trim().min(1).max(100).optional(),
+  phone: z.string().trim().max(30).optional(),
+});
+
+const createDealerSchema = z.object({
+  email: z.string().trim().toLowerCase().pipe(z.email()),
+  password: z.string().min(8, "Password must be at least 8 characters").max(128),
+  name: z.string().trim().min(1).max(100).optional(),
   phone: z.string().trim().max(30).optional(),
 });
 
 const createCustomerSchema = z.object({
   email: z.string().trim().toLowerCase().pipe(z.email()),
-  name: z.string().trim().min(2).max(100).optional(),
+  name: z.string().trim().min(1).max(100).optional(),
   phone: z.string().trim().max(30).optional(),
 });
 
@@ -158,6 +165,12 @@ export const createSubadmin = handle(async (req, res) => {
   res.status(201).json({ success: true, data: user });
 });
 
+export const createDealer = handle(async (req, res) => {
+  const dto = createDealerSchema.parse(req.body);
+  const user = await AuthService.createDealer(dto);
+  res.status(201).json({ success: true, data: user });
+});
+
 export const createCustomer = handle(async (req, res) => {
   const dto = createCustomerSchema.parse(req.body);
   const user = await AuthService.createCustomer(dto);
@@ -170,18 +183,26 @@ export const updateUserRole = handle(async (req, res) => {
   res.json({ success: true, data: user });
 });
 
+const userListQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  role: z.enum(["CUSTOMER", "ADMIN", "SUBADMIN", "DEALER"]).optional(),
+  search: z.string().trim().optional(),
+});
+
+const analyticsQuerySchema = z.object({
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
+});
+
 export const getUsers = handle(async (req, res) => {
-  const page = Math.max(1, Number(req.query["page"]) || 1);
-  const limit = Math.min(100, Math.max(1, Number(req.query["limit"]) || 20));
-  const role = req.query["role"] as string | undefined;
-  const search = req.query["search"] as string | undefined;
+  const { page, limit, role, search } = userListQuerySchema.parse(req.query);
   const result = await AuthService.getUsers(page, limit, role, search);
   res.json({ success: true, ...result });
 });
 
 export const getAnalytics = handle(async (req, res) => {
-  const from = req.query["from"] ? new Date(req.query["from"] as string) : undefined;
-  const to = req.query["to"] ? new Date(req.query["to"] as string) : undefined;
+  const { from, to } = analyticsQuerySchema.parse(req.query);
   const data = await AuthService.getAnalytics(from, to);
   res.json({ success: true, data });
 });
