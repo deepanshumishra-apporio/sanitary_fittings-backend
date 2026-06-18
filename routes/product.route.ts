@@ -5,6 +5,7 @@ import {
   getProductById,
   getProductsByCategory,
   getUploadUrl,
+  cleanupUploads,
   createProduct,
   updateProduct,
   deleteProduct,
@@ -22,6 +23,9 @@ productRoutes.get("/:id", getProductById);
 
 // Returns a presigned R2 PUT URL; mobile uploads the image directly to R2
 productRoutes.post("/upload-url", requireAuth, requireRole("ADMIN", "SUBADMIN"), getUploadUrl);
+
+// Removes orphaned presigned uploads when a create/update fails after upload
+productRoutes.post("/cleanup-uploads", requireAuth, requireRole("ADMIN", "SUBADMIN"), cleanupUploads);
 
 // JSON body only — images must already be on R2 via presigned upload
 productRoutes.post("/", requireAuth, requireRole("ADMIN", "SUBADMIN"), upload.array("files"), createProduct);

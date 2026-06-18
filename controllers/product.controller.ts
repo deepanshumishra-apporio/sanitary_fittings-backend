@@ -66,6 +66,19 @@ export const getUploadUrl = handle(async (req, res) => {
   res.json({ success: true, data: result });
 });
 
+/**
+ * POST /product/cleanup-uploads
+ * Removes presigned-upload objects that were uploaded to R2 but never attached
+ * to a product (e.g. the client uploaded images, then the create/update request
+ * failed). Restricted to the `uploads/` staging prefix so it can never delete a
+ * live product image.
+ */
+export const cleanupUploads = handle(async (req, res) => {
+  const keys = parseUrls(req.body?.keys).filter((key) => key.startsWith("uploads/"));
+  await deleteFromR2(keys);
+  res.json({ success: true, message: "Orphaned uploads removed", removed: keys.length });
+});
+
 export const getProducts = handle(async (req, res) => {
   const query = productQuerySchema.parse(req.query);
   const result = await productService.listProducts(query);
