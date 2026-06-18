@@ -9,6 +9,7 @@ import {
   updateOrderPaymentStatus,
   cancelOrder,
   createManualOrder,
+  lookupCustomer,
   getPlacerAnalytics,
   getMyPlacerAnalytics,
 } from "../controllers/order.controller";
@@ -24,6 +25,10 @@ orderRoutes.patch("/my/:id/cancel", requireAuth, cancelOrder);
 
 // Admin / SubAdmin
 orderRoutes.post("/manual", requireAuth, requireRole("ADMIN", "SUBADMIN", "DEALER"), createManualOrder);
+// Exact-match customer lookup for autofilling manual orders. Restricted to the
+// roles that create manual orders, and placed before "/:id" so the literal path
+// isn't captured by the param route.
+orderRoutes.get("/customer-lookup", requireAuth, requireRole("ADMIN", "SUBADMIN", "DEALER"), lookupCustomer);
 // Analytics (placed before "/:id" so they aren't captured by the param route)
 orderRoutes.get("/analytics/placers", requireAuth, requireRole("ADMIN", "SUBADMIN"), getPlacerAnalytics);
 orderRoutes.get("/analytics/me", requireAuth, requireRole("ADMIN", "SUBADMIN", "DEALER"), getMyPlacerAnalytics);

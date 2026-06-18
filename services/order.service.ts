@@ -401,6 +401,54 @@ export async function createManualOrder(
   }, ORDER_TRANSACTION_OPTIONS);
 }
 
+// Exact-match lookup used by the manual-order screen to autofill a returning
+// customer. Security: restricted to CUSTOMER accounts (so staff/dealer records
+// are never exposed) and exact email/phone matching only (no partial search),
+// returning a single minimal record so the endpoint can't be used to enumerate
+// or harvest the user base.
+export async function lookupCustomer(query: { email?: string; phone?: string }) {
+  const or: Prisma.UserWhereInput[] = [];
+  if (query.email) or.push({ email: query.email });
+  if (query.phone) or.push({ phone: query.phone });
+  if (or.length === 0) return { found: false, customer: null };
+
+  const user = await prisma.user.findFirst({
+    where: { role: "CUSTOMER", OR: or },
+    select: {
+      name: true,
+      email: true,
+      phone: true,
+      addresses: {
+        orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],
+        take: 1,
+        select: {
+          name: true,
+          phone: true,
+          line1: true,
+          line2: true,
+          city: true,
+          state: true,
+          zip: true,
+          country: true,
+        },
+      },
+    },
+  });
+
+  if (!user) return { found: false, customer: null };
+
+  const [address] = user.addresses;
+  return {
+    found: true,
+    customer: {
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      address: address ?? null,
+    },
+  };
+}
+
 export async function getPlacerAnalytics(opts: { from?: Date; to?: Date; placedById?: string }) {
   const where: Prisma.OrderWhereInput = {
     status: { not: "CANCELLED" },

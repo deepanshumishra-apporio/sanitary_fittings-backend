@@ -4,6 +4,7 @@ import {
   updateOrderStatusSchema,
   updatePaymentStatusSchema,
   manualOrderSchema,
+  customerLookupSchema,
   orderListQuerySchema,
   analyticsQuerySchema,
 } from "../validations/order.validation";
@@ -76,4 +77,10 @@ export const createManualOrder = handle(async (req, res) => {
     req.user ? { userId: req.user.userId, role: req.user.role } : undefined
   );
   res.status(201).json({ success: true, data: order });
+});
+
+export const lookupCustomer = handle(async (req, res) => {
+  const query = customerLookupSchema.parse(req.query);
+  const result = await orderService.lookupCustomer(query);
+  res.json({ success: true, data: result });
 });

@@ -12,6 +12,18 @@ export const createOrderSchema = z.object({
     .min(1),
 });
 
+// Exact-match customer lookup for the manual-order flow. At least one of email
+// / phone must be provided; matching is exact (no partial search) to avoid
+// enumeration of the user base.
+export const customerLookupSchema = z
+  .object({
+    email: z.string().trim().toLowerCase().pipe(z.email()).optional(),
+    phone: z.string().trim().min(3).max(30).optional(),
+  })
+  .refine((d) => Boolean(d.email) || Boolean(d.phone), {
+    message: "Provide an email or phone number to look up",
+  });
+
 export const orderListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
@@ -68,3 +80,4 @@ export type CreateOrderDto = z.infer<typeof createOrderSchema>;
 export type UpdateOrderStatusDto = z.infer<typeof updateOrderStatusSchema>;
 export type UpdatePaymentStatusDto = z.infer<typeof updatePaymentStatusSchema>;
 export type ManualOrderDto = z.infer<typeof manualOrderSchema>;
+export type CustomerLookupDto = z.infer<typeof customerLookupSchema>;
